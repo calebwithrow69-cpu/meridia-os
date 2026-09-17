@@ -292,13 +292,16 @@ export const ROLE_CLASS = {
 // Chance (0-1) that an NPC in this job has ANY Shadowdark class at all. Most professions are just
 // professions — a shopkeeper, a servant, a scholar aren't secretly Fighters because the game needs a
 // stat block. A class means real training in violence or magic. Children and LV0 never roll here.
+// thief, priest, duelist, bard, and mage are pinned to 1 — the job title IS the trained class, so
+// "a Thief with no Thief training" isn't a flavorful exception, it's a contradiction. (cutpurse, by
+// contrast, is the petty amateur — no training implied, stays low.)
 export const CLASS_CHANCE = {
   laborer: 0.04, beggar: 0.02, child: 0, drunk: 0.05, rower: 0.07, sailor: 0.12, servant: 0.03,
   vendor: 0.04, artisan: 0.05, merchant: 0.08, innkeep: 0.08, gambler: 0.15, informant: 0.2,
-  cutpurse: 0.3, thief: 0.55, fence: 0.25, smuggler: 0.3, thug: 0.45, masked: 0.85, assassin: 0.95,
-  guard: 0.85, sergeant: 0.95, knight: 0.95, spy: 0.85, duelist: 0.85, gladiator: 0.8, bard: 0.5,
-  actor: 0.12, apprentice: 0.8, mage: 0.95, scholar: 0.15, clerk: 0.03, barrister: 0.1, acolyte: 0.55,
-  priest: 0.95, cultist: 0.55, charnelman: 0.35, mourner: 0.04, pilgrim: 0.08, physician: 0.1,
+  cutpurse: 0.3, thief: 1, fence: 0.25, smuggler: 0.3, thug: 0.45, masked: 0.85, assassin: 0.95,
+  guard: 0.85, sergeant: 0.95, knight: 0.95, spy: 0.85, duelist: 1, gladiator: 0.8, bard: 1,
+  actor: 0.12, apprentice: 0.8, mage: 1, scholar: 0.15, clerk: 0.03, barrister: 0.1, acolyte: 0.55,
+  priest: 1, cultist: 0.55, charnelman: 0.35, mourner: 0.04, pilgrim: 0.08, physician: 0.1,
   apothecary: 0.1, fortuneteller: 0.3, noble: 0.2, druid: 0.85,
 };
 export const CLASS_CHANCE_DEFAULT = 0.05;

@@ -30,7 +30,7 @@ import {
   rollBounty, rollAbilities, placesForRole, FILL, makeContext, abilityMods, pickFaction,
   REACT_ORDER, reactionLabel, reactionRoll, rollRecord, rollConditions, rollSituation,
   rollPlaces, rollShop, rollRumors, rollVoice, rollConnections, buildOpener, helpPrice,
-  pickMask, rollOrigin, rollFaith, generateNPC, hydrateBookNpc, muster,
+  pickMask, rollOrigin, rollFaith, generateNPC, hydrateBookNpc, muster, rollSecret,
 } from "./logic/generator.js";
 import { buildSheet, sdMods, gearSlotsUsed, walletText, hpState, rollDamage } from "./logic/sheet.js";
 import {
@@ -521,7 +521,7 @@ export default function MeridiaOS() {
     if (part === "faith") n.faith = rollFaith(npc.al, npc.facId, npc.roleId);
     if (part === "origin") n.origin = rollOrigin(npc.anc, npc.arch.cat);
     if (part === "abilities") n.abilities = rollAbilities(npc);
-    if (part === "secret") n.secret = pick(T.secret);
+    if (part === "secret") n.secret = rollSecret(npc);
     if (part === "react") { n.react = reactionRoll(npc.react.mod); n.disp = REACT_ORDER.indexOf(n.react.label); }
     if (part === "name" && !npc.isBook) {
       const np = NAMES[npc.anc] || NAMES_WR[npc.anc];

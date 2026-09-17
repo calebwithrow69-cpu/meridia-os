@@ -10,17 +10,18 @@ import {
   SHOP_SIGN_A, SHOP_SIGN_B, SHOP_GOODS, SHOP_QUIRK, SHOP_WONT, RUMORS, RUMOR_TRUTH,
   RUMOR_TWIST, RUMOR_FALSE, RUMOR_PRICE, RUMOR_GATE, VOICE_REGISTER, VOICE_PHRASE,
   VOICE_ADDRESS, VOICE_STOP, REL_TYPES, MUNDANE_JOBS, SHOP_JOBS, OPENER_FRAME,
-  ANCESTRY_WEIGHTS_WR, HALFELF_A, HALFELF_B, NAMES_WR, ORIGINS, GODS, DEVOTION,
+  ANCESTRY_WEIGHTS_WR, HALFELF_A, HALFELF_B, NAMES_WR, ORIGINS, GODS, DEVOTION, NOTABLE_SECRETS,
   WR_FACTIONS, BOOK_NPCS, BOUNTY_POSTER, BOUNTY_TERMS, BOUNTY_CLAIM, BOUNTY_TWIST, PLATE,
   T_ON, T_OFF, ON, TEMPLATES, PLANT_BAD, PLANT_GOOD, byKind, locByN, BOOK_AGE, BOOK_DOING,
   BOOK_ARCH, FACTION_STRENGTH, BOOK_NAME_LISTS, MORE_NAMES, NAMED,
 } from "../data/npc.js";
 import {
-  ABILITIES, SD_STATS, modOf, SCORE_BAND, scoreFor, SD_WEAPONS, SD_ARMOR, SD_ANCESTRY,
+  ABILITIES, SD_STATS, modOf, SCORE_BAND, scoreFor, SD_WEAPONS, SD_ARMOR, SD_ANCESTRY, alLabel,
   COMMON_LANGS, RARE_LANGS, TITLES, PRIEST_SPELLS, WIZARD_SPELLS, PRIEST_KNOWN, WIZARD_KNOWN,
   SD_CLASSES, ROLE_CLASS, ROLE_BACKGROUND, ROLE_BG_FIXED, GEAR, BAND_EXTRAS, OUTFITS,
   OUTFIT_BY_ROLE, ROLE_KIT, WALLET, WALLET_BONUS, rollDice,
 } from "../data/shadowdark.js";
+// `alLabel` was used below (the alignment-mismatch warning) but never imported — latent bug, fixed here.
 import { buildSheet, sdMods } from "./sheet.js";
 
 export function pickLodging(band, cat) {
@@ -258,6 +259,16 @@ export const reactionLabel = (sum) => (sum <= 6 ? "Hostile" : sum <= 8 ? "Suspic
 export function reactionRoll(mod = 0) {
   const a = d(6), b = d(6), sum = a + b + mod;
   return { dice: [a, b], mod, sum, label: reactionLabel(sum) };
+}
+
+
+// a secret warlock/witch/Knight of St. Ydris needs a SECRET that points at what they actually are —
+// otherwise the "NOT WHAT THEY SEEM" badge is the only place their hidden nature ever shows up.
+export function rollSecret(npc) {
+  if (npc.roleId === "child") return pick(CHILD.secret);
+  const pool = npc.sd && npc.sd.notable && NOTABLE_SECRETS[npc.sd.clsId];
+  if (pool) return pick(pool).replace(/\{patron\}/g, npc.sd.patron || "their patron");
+  return pick(T.secret);
 }
 
 
@@ -616,6 +627,8 @@ export function generateNPC(s, keep = {}) {
   // sd is built before record so a warlock/witch/knight of St. Ydris can weigh their own record roll
   npc.sd = buildSheet(npc, s);
   syncThreat(npc);
+  // a notable NPC's SECRET should point at what they actually are, not a generic city secret
+  npc.secret = rollSecret(npc);
   npc.record = keep.record || rollRecord(npc, s);
   // you cannot be both publicly wanted for a major crime and a celebrity
   if (["wanted", "exiled"].includes(npc.record.state.id)) npc.renown = Math.min(npc.renown, 5);

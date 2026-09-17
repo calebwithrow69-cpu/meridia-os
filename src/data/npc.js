@@ -1284,6 +1284,15 @@ export const PLANT_BAD = ["have been informing for the Onyx Eye", "cheated a gui
 
 export const PLANT_GOOD = ["pulled a child out of the canal and wouldn't take payment", "gave a week's takings to Madeera's Hearth", "danced at the Duke's Ball and were noticed", "stood up to a guild collector in front of witnesses", "are owed a favour by someone very high up", "sold honest goods at a loss rather than break their word"];
 
+// what a secretly-classed NPC's SECRET actually is — a warlock, witch, or Knight of St. Ydris hiding
+// under an ordinary job needs a hook that points at what they really are, not a generic city secret.
+// {patron} is filled with the warlock's chosen patron's name.
+export const NOTABLE_SECRETS = {
+  warlock: ["made a pact with {patron} and has told no one", "owes {patron} a price that hasn't been named yet", "hears {patron} in their sleep, and does what it asks", "traded something they won't name for what {patron} gave them", "prays to their god in public and to {patron} in private"],
+  witch: ["practises the old craft after dark, and keeps a familiar no one's seen", "reads futures that are real, and has learned to lie about the bad ones", "was taught by someone the city already burned for it", "keeps a cauldron nobody else is allowed near", "knows a working that could kill someone quietly, and has never used it — yet"],
+  knightydris: ["serves a cursed order under St. Ydris and prays no one asks about the scars", "carries a demon's bargain in exchange for the strength to fight it", "was knighted by no living hand", "hides what's under the armour, even from a physician", "feels the possession coming on and has started to enjoy it"],
+};
+
 /* ============================= ENGINE ============================= */
 
 /* All randomness routes through RNG so it can be swapped for a seeded
