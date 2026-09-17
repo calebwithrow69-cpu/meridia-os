@@ -71,7 +71,7 @@ export const SD_WEAPONS = {
   longbow: { n: "Longbow", cost: "8 gp", type: "R", range: "F", dmg: "1d8", props: "2H", slots: 1, ammo: "arrows" },
   longsword: { n: "Longsword", cost: "9 gp", type: "M", range: "C", dmg: "1d8", props: "", slots: 1 },
   mace: { n: "Mace", cost: "5 gp", type: "M", range: "C", dmg: "1d6", props: "", slots: 1 },
-  pike: { n: "Pike", cost: "10 gp", type: "M", range: "2×C", dmg: "1d10", props: "2H", slots: 1 },
+  pike: { n: "Pike", cost: "10 gp", type: "M", range: "2×C", dmg: "1d10", props: "2H", slots: 2 },
   scimitar: { n: "Scimitar", cost: "8 gp", type: "M", range: "C", dmg: "1d6", props: "Finesse", slots: 1 },
   shortbow: { n: "Shortbow", cost: "6 gp", type: "R", range: "F", dmg: "1d4", props: "2H", slots: 1, ammo: "arrows" },
   shortsword: { n: "Shortsword", cost: "7 gp", type: "M", range: "C", dmg: "1d6", props: "", slots: 1 },
@@ -79,7 +79,14 @@ export const SD_WEAPONS = {
   spear: { n: "Spear", cost: "5 sp", type: "MR", range: "C/N", dmg: "1d6", props: "Thrown", slots: 1 },
   staff: { n: "Staff", cost: "5 sp", type: "M", range: "C", dmg: "1d4", props: "2H", slots: 1 },
   warhammer: { n: "Warhammer", cost: "10 gp", type: "M", range: "C", dmg: "1d10", props: "2H", slots: 1 },
-  whip: { n: "Whip", cost: "10 gp", type: "MR", range: "N", dmg: "1d4", props: "Finesse, Lash", slots: 1 },
+  whip: { n: "Whip", cost: "10 gp", type: "MR", range: "C/N", dmg: "1d4", props: "Finesse, Lash", slots: 1 },
+  // Cursed Scroll 2 (Red Sands)
+  blowgun: { n: "Blowgun", cost: "5 gp", type: "R", range: "N", dmg: "1", props: "Firing from hiding doesn't reveal your position", slots: 1 },
+  bolas: { n: "Bolas", cost: "2 gp", type: "R", range: "N", dmg: "-", props: "On a hit vs. a horse-sized or smaller creature, its speed drops to close until it frees itself (DC 15 STR/DEX)", slots: 1 },
+  razorchain: { n: "Razor chain", cost: "12 gp", type: "MR", range: "C/N", dmg: "1d6", props: "Finesse, Lash", slots: 1 },
+  shuriken: { n: "Shuriken", cost: "1 gp", type: "R", range: "N", dmg: "1d4", props: "Thrown; can be planted as a ground trap", slots: 1 },
+  // Cursed Scroll 3 (Midnight Sun) — distinct from "staff" (2H blunt, 5sp) above
+  stave: { n: "Stave", cost: "2 gp", type: "M", range: "C", dmg: "1d6", props: "2H, Sundering", slots: 1 },
 };
 
 export const SD_ARMOR = {
@@ -121,6 +128,13 @@ export const TITLES = {
   // Cursed Scroll 6 — the book leaves some early Lawful/Chaotic cells blank; those fall back to "Duelist".
   // At 9-10 the book offers three flavor variants per alignment (e.g. Swordmaster/Mongoose/Wolf); "Swordmaster" is used for all three to keep one title per level.
   duelist: { L: ["Duelist", "Fencer", "Duelist", "Defender", "Swordmaster"], C: ["Duelist", "Ruffian", "Duelist", "Heckler", "Swordmaster"], N: ["Student", "Challenger", "Mouser", "Panther", "Swordmaster"] },
+  // Cursed Scroll 2 (Red Sands)
+  desertrider: { L: ["Outrider", "Sandrunner", "Trailblazer", "Swift Wind", "Stormrunner"], C: ["Bandit", "Robber", "Raider", "Scourge", "Bandit King/Queen"], N: ["Rat", "Fox", "Wolf", "Tiger", "Dragon"] },
+  pitfighter: { L: ["Rookie", "Gladiator", "Hero", "Champion", "Legend"], C: ["Ruffian", "Brawler", "Heel", "Villain", "Legend"], N: ["Underdog", "Dark Horse", "Wild Card", "Victor", "Legend"] },
+  rasgodai: { L: ["Acolyte", "Mirror Path", "Monk", "Master", "White Lotus"], C: ["Acolyte", "Shadow Path", "Monk", "Assassin", "Black Lotus"], N: ["Acolyte", "Fire Path", "Monk", "Demon Blade", "Red Lotus"] },
+  // Cursed Scroll 3 (Midnight Sun)
+  seawolf: { L: ["Freefolk", "Shieldman/maiden", "Thane", "Jarl", "King/Queen"], C: ["Rabble", "Raider", "Reaver", "Conqueror", "Usurper"], N: ["Wanderer", "Explorer", "Adventurer", "Renowned", "Legendary"] },
+  seer: { L: ["Guide", "Chanter", "Rune Reader", "Wise One", "Seer of Odin"], C: ["Hedge Witch", "Whisperer", "Bone Reader", "Dreaded One", "Seer of Loki"], N: ["Fortune Teller", "Singer", "Star Reader", "Blessed One", "Seer of Freya"] },
 };
 
 
@@ -154,6 +168,55 @@ export const WITCH_SPELLS = [
   ["Anathema", "Dreamwalk", "Enfeeble", "Finger of Death", "Mother of Night", "Scrying", "Shapechange", "Soul Jar"],
 ];
 export const WITCH_KNOWN = [[3], [4], [4, 1], [4, 2], [4, 2, 1], [4, 3, 2], [4, 3, 2, 1], [4, 4, 2, 2], [4, 4, 3, 2, 1], [4, 4, 4, 2, 2]];
+
+// Seer — Cursed Scroll 3
+export const SEER_SPELLS = [
+  ["Chant", "Evoke Rage", "Potion", "Trance"],
+  ["Fate", "Read The Runes", "Sacrifice", "Soulbind"],
+  ["Cast Out", "Hallucinate", "Raven", "Wolfshape"],
+  ["Freya's Omen", "Loki's Trickery", "Odin's Wisdom", "Thor's Thunder"],
+  ["Ragnarok", "Valkyrie", "World Serpent", "World Tree"],
+];
+export const SEER_KNOWN = [[1], [2], [2, 1], [2, 2], [2, 2, 1], [2, 2, 2], [2, 2, 2, 1], [2, 2, 2, 2], [2, 2, 2, 2, 1], [2, 2, 2, 2, 2]];
+// what a Seer risks on a natural 1 spellcasting check, by the failed spell's tier — flavor only, not a rolled table
+export const SEER_PENANCE = [
+  "temporarily give up 1d4 HP (minimum 1) for a week",
+  "temporarily lower WIS by 2 for two weeks",
+  "permanently sacrifice 1 point of CHA",
+  "ritualistically sink a burning longboat into the sea",
+  "ritualistically sacrifice nine humanoid lives",
+];
+
+// Odin (Lawful), Freya (Neutral), and Loki (Chaotic) — the Sea Wolf's and Seer's Old Gods map directly
+// onto alignment, so no extra random state is needed to pick one.
+export const OLD_GODS = { L: "Odin", N: "Freya", C: "Loki" };
+
+// Nord Background — Cursed Scroll 3, used by Sea Wolf and Seer instead of the city's own background pool
+export const NORD_BACKGROUND = ["Freed", "Displaced", "Criminal", "Drifter", "Crop Farmer", "Livestock Farmer", "Hunter", "Fisher", "Enforcer", "Trader", "Crafter", "Bowyer", "Seer's Apprentice", "Shipwright", "Blacksmith", "Far Traveler", "Skald", "Heroborn", "Nobleborn", "God's Blood"];
+
+// Black Lotus Talents (d12) — Cursed Scroll 2. The Ras-Godai's "sorcery," rolled instead of learning spells.
+export const BLACK_LOTUS_TALENTS = [
+  "gains two Black Lotus talents (rerolling any further 1s)",
+  "1/day, paralyzes a LV 9 or less target for 1d4 rounds when they damage it with a weapon",
+  "advantage on Dexterity checks to avoid entrapment or injury",
+  "+1 to AC when wielding a melee weapon in each hand",
+  "an additional hit point die",
+  "deals triple damage with Assassin against an unaware target",
+  "enemies who see them need an 18, not 15, to pass a morale check",
+  "1/day, walks on water as though it were solid ground for 1d4 rounds",
+  "1/day, a LV 5 or less creature within near must pass a DC 15 CON check or fall asleep",
+  "1/day, walks on sheer surfaces like walls for 1d4 rounds",
+  "+1 damage with melee weapons",
+  "1/day, a LV 9 or less creature must pass a DC 15 WIS check or can't see or hear them for 1d4 rounds",
+];
+export function rollBlackLotus(depth = 0) {
+  const r = d(12) - 1;
+  if (r === 0 && depth < 2) {
+    const a = rollBlackLotus(depth + 1), b = rollBlackLotus(depth + 1);
+    return [`Gains two Black Lotus talents: ${a[0]}; and ${b[0]}`, { extraHp: (a[1].extraHp || 0) + (b[1].extraHp || 0) }];
+  }
+  return [`Black Lotus: ${BLACK_LOTUS_TALENTS[r]}`, r === 4 ? { extraHp: 1 } : {}];
+}
 
 // Knight of St. Ydris casts from the witch spell list too, but on a slower table — Cursed Scroll 1
 export const YDRIS_KNOWN = [[], [], [1], [2], [3], [3, 1], [3, 2], [3, 3], [3, 3, 1], [3, 3, 2]];
@@ -268,6 +331,31 @@ export const SD_CLASSES = {
     features: [["Parry", "Once per day, an attack that would hit them misses instead."], ["Tale Spinner", "DC 15 CHA check: strangers believe they're famous and important for the rest of the interaction. The same person can't be fooled twice."], ["Taunt", "When an enemy misses them with an attack, advantage on attacks against that enemy next round."]],
     talent: (r) => r === 2 ? ["1/day, all attacks that would hit them this round miss instead", {}] : r <= 6 ? ["+1 to melee attacks and damage, or +1 Parry use per day", { atk: 1 }] : r <= 9 ? ["+2 to {stat}", { stat: ["STR", "DEX", "CHA"], amt: 2 }] : r <= 11 ? ["+1d6 damage when they hit with a Taunt attack", {}] : ["Choose a talent, or +2 points to distribute to stats", { pick: 1 }],
   },
+  desertrider: {
+    n: "Desert Rider", hd: 8, weapons: ["club", "dagger", "javelin", "longsword", "pike", "shortbow", "scimitar", "spear", "whip"], armor: ["leather"], shield: true, src: "Cursed Scroll 2",
+    features: [["Charge", "3/day, moving at least near before attacking makes their melee attacks deal double damage that round."], ["Mount", "A loyal camel or horse that comes when called and never spooks. While riding, both gain +AC equal to half their level (round down); the mount gains bonus levels equal to half the rider's level (round down)."]],
+    talent: (r) => r === 2 ? ["Can use any rider-bearing creature as a mount", {}] : r <= 6 ? ["+1 to attacks or damage", { atk: 1 }] : r <= 9 ? ["+2 to {stat} (or +1 to melee attacks)", { stat: ["STR", "DEX"], amt: 2 }] : r <= 11 ? ["An additional use of Charge each day", {}] : ["Choose a talent, or +2 points to distribute to stats", { pick: 1 }],
+  },
+  pitfighter: {
+    n: "Pit Fighter", hd: 8, weapons: null, armor: ["leather"], shield: true, src: "Cursed Scroll 2",
+    features: [["Flourish", "3/day, regains 1d6 HP when hitting an enemy with a melee attack."], ["Implacable", "Advantage on CON checks to resist injury, poison, or endure extreme environments."], ["Last Stand", "Gets up from dying with 1 HP on a natural roll of 18-20."], ["Relentless", "3/day, when reduced to 0 HP, a DC 18 CON check instead brings them to 1 HP."]],
+    talent: (r) => r === 2 ? ["1/day, ignores all damage and effects from one attack", {}] : r <= 6 ? ["+1 to melee weapon damage", {}] : r <= 9 ? ["+2 to {stat} (or +1 to melee attacks)", { stat: ["STR", "CON"], amt: 2 }] : r <= 11 ? ["Flourish heals +1d6 more", {}] : ["Choose a talent, or +2 points to distribute to stats", { pick: 1 }],
+  },
+  rasgodai: {
+    n: "Ras-Godai", hd: 6, weapons: ["blowgun", "bolas", "dagger", "razorchain", "scimitar", "shuriken", "spear"], armor: ["leather"], shield: false, src: "Cursed Scroll 2", fixedLangs: ["Diabolic"],
+    features: [["Assassin", "Advantage on checks to sneak and hide. Deals double damage against unaware targets."], ["Smoke Step", "3/day, teleports to a location seen within near — doesn't use their action."], ["Black Lotus", "Trained in a hidden desert monastery; carries the sorcerous gifts of the black lotus flower (see Talents)."]],
+    talent: (r) => r === 2 ? ["Trained in the use of poisons", {}] : r <= 6 ? rollBlackLotus() : r <= 9 ? ["+2 to {stat} (or +1 to melee attacks)", { stat: ["STR", "DEX"], amt: 2 }] : r <= 11 ? ["An additional use of Smoke Step each day", {}] : ["Choose a talent, or +2 points to distribute to stats", { pick: 1 }],
+  },
+  seawolf: {
+    n: "Sea Wolf", hd: 8, weapons: ["dagger", "greataxe", "handaxe", "longbow", "longsword", "spear"], armor: ["leather", "chainmail"], shield: true, src: "Cursed Scroll 3",
+    features: [["Seafarer", "Advantage on checks related to navigating and crewing boats."], ["Old Gods", "Each day, aligns with one Old God's favor until their next rest: Odin (regain 1d4 HP on a kill), Freya (a daily luck token, +1d6 when used), or Loki (advantage to lie, sneak, and hide). Most favor {god}, sharing their own nature."], ["Shield Wall", "With a shield, can brace as an action: AC becomes 20 until their next turn."]],
+    talent: (r) => r === 2 ? ["1/day, goes berserk: immune to damage for 3 rounds", {}] : r <= 6 ? ["Their attacks deal +1 damage", {}] : r <= 9 ? ["+2 to {stat} (or +1 to attacks)", { stat: ["STR", "CON"], amt: 2 }] : r <= 11 ? ["Duality: chooses two different Old Gods effects each day", {}] : ["Choose a talent, or +2 points to distribute to stats", { pick: 1 }],
+  },
+  seer: {
+    n: "Seer", hd: 6, weapons: ["dagger", "stave", "spear"], armor: ["leather"], shield: false, src: "Cursed Scroll 3", cast: "WIS", spells: SEER_SPELLS, known: SEER_KNOWN,
+    features: [["Destined", "Adds 1d6 to any roll when using a luck token."], ["Omen", "3/day, DC 9 WIS check to gain a luck token (never more than one at a time)."], ["Spellcasting", "WIS-based. Spell DC = 10 + tier. A natural 1 requires Seer's Penance before that spell can be cast again — a real cost that rises with the spell's tier, from a temporary HP loss up to a permanent one."]],
+    talent: (r) => r === 2 ? ["Learn an additional seer spell of any tier they can cast", { spell: 1 }] : r <= 6 ? ["An additional use of Omen each day", {}] : r <= 9 ? ["+2 to {stat}, or +1 to spellcasting checks", { stat: ["WIS", "CHA"], amt: 2 }] : r <= 11 ? ["Their Destined die category increases by one", {}] : ["Choose a talent, or +2 points to distribute to stats", { pick: 1 }],
+  },
 };
 
 // Which class an NPC gets IF they have one at all (see CLASS_CHANCE below — most jobs are ordinary
@@ -277,30 +365,30 @@ export const SD_CLASSES = {
 
 export const ROLE_CLASS = {
   laborer: [["roustabout", 9], ["fighter", 1]], beggar: [["roustabout", 1]], child: [["roustabout", 1]], drunk: [["roustabout", 8], ["fighter", 2]],
-  rower: [["roustabout", 7], ["fighter", 3], ["ranger", 1]], sailor: [["fighter", 5], ["roustabout", 4], ["thief", 1], ["ranger", 1]], servant: [["roustabout", 1]],
+  rower: [["roustabout", 7], ["fighter", 3], ["ranger", 1]], sailor: [["fighter", 4], ["roustabout", 3], ["seawolf", 2], ["thief", 1], ["ranger", 1]], servant: [["roustabout", 1]],
   vendor: [["roustabout", 1]], artisan: [["roustabout", 1]], merchant: [["roustabout", 7], ["thief", 3]], innkeep: [["roustabout", 7], ["fighter", 3]],
   gambler: [["thief", 6], ["roustabout", 4]], informant: [["thief", 7], ["roustabout", 3]], cutpurse: [["thief", 1]], thief: [["thief", 1]],
-  fence: [["thief", 8], ["roustabout", 2]], smuggler: [["thief", 6], ["fighter", 4]], thug: [["fighter", 7], ["thief", 3]], masked: [["thief", 4], ["warlock", 3], ["wizard", 2], ["witch", 1]],
-  assassin: [["thief", 1]], guard: [["fighter", 1]], sergeant: [["fighter", 1]], knight: [["fighter", 1]], spy: [["thief", 8], ["wizard", 2]],
-  duelist: [["duelist", 7], ["fighter", 2], ["thief", 1]], gladiator: [["fighter", 1]], bard: [["bard", 6], ["roustabout", 2], ["wizard", 1], ["thief", 1]], actor: [["roustabout", 6], ["bard", 2], ["thief", 2]],
+  fence: [["thief", 8], ["roustabout", 2]], smuggler: [["thief", 5], ["fighter", 3], ["seawolf", 2]], thug: [["fighter", 6], ["pitfighter", 2], ["thief", 2]], masked: [["thief", 4], ["warlock", 3], ["wizard", 2], ["witch", 1]],
+  assassin: [["thief", 7], ["rasgodai", 3]], guard: [["fighter", 1]], sergeant: [["fighter", 1]], knight: [["fighter", 1]], spy: [["thief", 8], ["wizard", 2]],
+  duelist: [["duelist", 7], ["fighter", 2], ["thief", 1]], gladiator: [["pitfighter", 6], ["fighter", 4]], bard: [["bard", 6], ["roustabout", 2], ["wizard", 1], ["thief", 1]], actor: [["roustabout", 6], ["bard", 2], ["thief", 2]],
   apprentice: [["wizard", 1]], mage: [["wizard", 1]], scholar: [["wizard", 5], ["roustabout", 5]], clerk: [["roustabout", 1]], barrister: [["roustabout", 8], ["wizard", 2]],
   acolyte: [["priest", 1]], priest: [["priest", 1]], cultist: [["warlock", 6], ["priest", 4]], charnelman: [["priest", 8], ["fighter", 2]],
-  mourner: [["roustabout", 7], ["priest", 3]], pilgrim: [["priest", 4], ["roustabout", 5], ["ranger", 1]], physician: [["roustabout", 6], ["priest", 4]],
-  apothecary: [["roustabout", 6], ["wizard", 3], ["witch", 1]], fortuneteller: [["witch", 4], ["roustabout", 3], ["wizard", 2], ["warlock", 1]], noble: [["fighter", 4], ["roustabout", 3], ["wizard", 2], ["duelist", 1]],
+  mourner: [["roustabout", 7], ["priest", 3]], pilgrim: [["priest", 3], ["roustabout", 4], ["seer", 2], ["ranger", 1]], physician: [["roustabout", 6], ["priest", 4]],
+  apothecary: [["roustabout", 6], ["wizard", 3], ["witch", 1]], fortuneteller: [["witch", 3], ["seer", 3], ["roustabout", 2], ["wizard", 1], ["warlock", 1]], noble: [["fighter", 3], ["roustabout", 3], ["wizard", 2], ["duelist", 1], ["desertrider", 1]],
   druid: [["priest", 7], ["wizard", 3]],
 };
 
 // Chance (0-1) that an NPC in this job has ANY Shadowdark class at all. Most professions are just
 // professions — a shopkeeper, a servant, a scholar aren't secretly Fighters because the game needs a
 // stat block. A class means real training in violence or magic. Children and LV0 never roll here.
-// thief, priest, duelist, bard, and mage are pinned to 1 — the job title IS the trained class, so
-// "a Thief with no Thief training" isn't a flavorful exception, it's a contradiction. (cutpurse, by
-// contrast, is the petty amateur — no training implied, stays low.)
+// thief, priest, duelist, bard, mage, and gladiator (job label "Pit fighter") are pinned to 1 — the
+// job title IS the trained class's name, so lacking that class isn't a flavorful exception, it's a
+// contradiction. (cutpurse, by contrast, is the petty amateur — no training implied, stays low.)
 export const CLASS_CHANCE = {
   laborer: 0.04, beggar: 0.02, child: 0, drunk: 0.05, rower: 0.07, sailor: 0.12, servant: 0.03,
   vendor: 0.04, artisan: 0.05, merchant: 0.08, innkeep: 0.08, gambler: 0.15, informant: 0.2,
   cutpurse: 0.3, thief: 1, fence: 0.25, smuggler: 0.3, thug: 0.45, masked: 0.85, assassin: 0.95,
-  guard: 0.85, sergeant: 0.95, knight: 0.95, spy: 0.85, duelist: 1, gladiator: 0.8, bard: 1,
+  guard: 0.85, sergeant: 0.95, knight: 0.95, spy: 0.85, duelist: 1, gladiator: 1, bard: 1,
   actor: 0.12, apprentice: 0.8, mage: 1, scholar: 0.15, clerk: 0.03, barrister: 0.1, acolyte: 0.55,
   priest: 1, cultist: 0.55, charnelman: 0.35, mourner: 0.04, pilgrim: 0.08, physician: 0.1,
   apothecary: 0.1, fortuneteller: 0.3, noble: 0.2, druid: 0.85,
@@ -412,7 +500,7 @@ export const ROLE_KIT = {
   smuggler: { w: ["shortsword", "crossbow", "dagger", "handaxe", ["spear", "Boat hook (as spear)"]], a: ["leather"], g: ["rope", "lantern"], x: ["oil", "grapple", "sack", "flask", "whistle", "canvas", "bullseye", "lockgood", "block", "silkrope"] },
   thug: { w: ["club", "mace", "shortsword", "dagger", "handaxe", "morningstar", ["whip", "Length of chain (as whip)"], ["club", "Brass knuckles (as club)"]], a: ["none", "leather", "leather"], g: [], x: ["caltrops", "flask", "manacles", "torch", "whetstone", "sack", "ale", "dice"] },
   masked: { w: [["scimitar", "Rapier (as scimitar)"], "dagger"], a: ["none", "leather"], g: ["disguise"], x: ["ringcomp", "perfume", "wax", "ink", "paper"] },
-  assassin: { w: ["dagger", "shortsword", "crossbow", "shortbow"], a: ["leather"], g: ["tools", "nightshade"], x: ["disguise", "caltrops", "ringcomp", "rope", "oil", "belladonna", "wolfsbane", "vials", "silkrope", "lampblack"] },
+  assassin: { w: ["dagger", "shortsword", "crossbow", "shortbow", "scimitar", "shuriken"], a: ["leather"], g: ["tools", "nightshade"], x: ["disguise", "caltrops", "ringcomp", "rope", "oil", "belladonna", "wolfsbane", "vials", "silkrope", "lampblack"] },
   guard: { w: ["spear", "longsword", "crossbow", "pike", "mace", "shortsword", ["club", "Truncheon (as club)"]], a: ["leather", "chainmail", "chainmail"], sh: 0.6, g: ["whistle"], x: ["lantern", "torch", "manacles", "rations", "waterskin", "bell", "whetstone", "tinder", "bullseye"] },
   sergeant: { w: ["longsword", "mace", "crossbow"], a: ["chainmail", "chainmail", "plate"], sh: 0.7, g: ["whistle", "keys"], x: ["lantern", "manacles", "scrollcase", "rations"] },
   knight: { w: ["longsword", "bastard", "warhammer", "morningstar", "greatsword", "spear"], a: ["chainmail", "plate", "plate"], sh: 0.7, g: ["signet"], x: ["waterskin", "rations", "rope", "oil", "whetstone", "baldric", "gorget", "hunthorn", "bedroll"] },

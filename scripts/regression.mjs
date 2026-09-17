@@ -107,8 +107,9 @@ function validate(npc) {
   const dupe = sd.langs.find((l, i) => sd.langs.indexOf(l) !== i);
   if (dupe) flag("duplicate-language", dupe, npc);
 
-  // attacks well-formed — versatile weapons carry two dice forms as "1d6/1d8", e.g. a Morning star
-  sd.attacks.forEach((a) => { if (!/^\d*d\d+(\+\d+)?(\/\d*d\d+(\+\d+)?)?$/.test(a.dmg)) flag("bad-damage-string", `${a.n}: "${a.dmg}"`, npc); });
+  // attacks well-formed — versatile weapons carry two dice forms as "1d6/1d8" (e.g. Morning star);
+  // the blowgun deals a flat "1" and the bolas deals "-" (control effect, no direct damage)
+  sd.attacks.forEach((a) => { if (!/^(\d*d\d+(\+\d+)?(\/\d*d\d+(\+\d+)?)?|\d+|-)$/.test(a.dmg)) flag("bad-damage-string", `${a.n}: "${a.dmg}"`, npc); });
 
   // title only when the class actually has a title table
   if (sd.title && !TITLES_HAS(sd.clsId)) flag("unexpected-title", `${sd.clsId} has title "${sd.title}" but no TITLES entry`, npc);

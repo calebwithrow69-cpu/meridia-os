@@ -4,9 +4,13 @@ import {
   ABILITIES, SD_STATS, modOf, SCORE_BAND, scoreFor, SD_WEAPONS, SD_ARMOR, SD_ANCESTRY,
   COMMON_LANGS, RARE_LANGS, TITLES, PRIEST_SPELLS, WIZARD_SPELLS, PRIEST_KNOWN, WIZARD_KNOWN,
   SD_CLASSES, ROLE_CLASS, CLASS_CHANCE, CLASS_CHANCE_DEFAULT, RARE_CLASS_CHANCE, RARE_CLASS_POOL,
-  WARLOCK_PATRONS, DIABOLICAL_BG, ROLE_BACKGROUND, ROLE_BG_FIXED, GEAR, BAND_EXTRAS, OUTFITS,
+  WARLOCK_PATRONS, DIABOLICAL_BG, OLD_GODS, NORD_BACKGROUND, ROLE_BACKGROUND, ROLE_BG_FIXED, GEAR, BAND_EXTRAS, OUTFITS,
   OUTFIT_BY_ROLE, ROLE_KIT, WALLET, WALLET_BONUS, rollDice,
 } from "../data/shadowdark.js";
+
+// Sea Wolf and Seer are foreign to Meridia — they draw from the Isles of Andrik's own background
+// table instead of the city's job-category pools, same as the notable/Diabolical classes do.
+const NORD_CLASSES = ["seawolf", "seer"];
 
 const RARE_CLASSES = RARE_CLASS_POOL.map(([id]) => id);
 
@@ -154,13 +158,15 @@ export function buildSheet(npc, s) {
   if (npc.anc === "elf" && cls.cast && !weapons.some(([w]) => SD_WEAPONS[w].type === "R")) cast += 1;
   const titleRow = TITLES[clsId] && TITLES[clsId][npc.al];
   const title = titleRow ? titleRow[Math.min(4, Math.floor((lv - 1) / 2))] : "";
-  // a warlock, witch, or Knight of St. Ydris carries a background from what shaped them, not their day job
-  const bg = notable ? pick(DIABOLICAL_BG) : (ROLE_BG_FIXED[npc.roleId] || pick(ROLE_BACKGROUND[npc.arch.cat] || ROLE_BACKGROUND.labor));
+  // a warlock, witch, or Knight of St. Ydris carries a background from what shaped them, not their day job;
+  // a Sea Wolf or Seer carries one from the Isles of Andrik instead of the city's own job categories
+  const bg = notable ? pick(DIABOLICAL_BG) : NORD_CLASSES.includes(clsId) ? pick(NORD_BACKGROUND) : (ROLE_BG_FIXED[npc.roleId] || pick(ROLE_BACKGROUND[npc.arch.cat] || ROLE_BACKGROUND.labor));
   const deity = npc.faith ? npc.faith.name : "";
   const patron = patronKey ? WARLOCK_PATRONS[patronKey].n : "";
+  const god = OLD_GODS[npc.al] || "the Old Gods";
   const fill = (t) => t.replace("{mastery}", mastery.map((w) => SD_WEAPONS[w].n).join(", ") || "their weapon")
     .replace("{grit}", mods.STR >= mods.DEX ? "Strength" : "Dexterity").replace("{deity}", deity || "their god")
-    .replace("{patron}", patron || "their patron")
+    .replace("{patron}", patron || "their patron").replace("{god}", god)
     .replace("{backstab}", String(1 + Math.floor(lv / 2) + backstab)).replace("{spell}", advOn || "one spell");
   const features = [
     { n: anc.trait[0], t: anc.trait[1], src: "Ancestry" },
