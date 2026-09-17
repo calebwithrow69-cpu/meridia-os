@@ -143,7 +143,7 @@ export const WIZARD_SPELLS = [
 
 export const PRIEST_KNOWN = [[2], [3], [3, 1], [3, 2], [3, 2, 1], [3, 2, 2], [3, 3, 2, 1], [3, 3, 2, 2], [3, 3, 2, 2, 1], [3, 3, 3, 2, 2]];
 
-export const WIZARD_KNOWN = [[3], [4], [4, 1], [4, 2], [4, 2, 1], [4, 3, 2], [4, 3, 2, 1], [4, 4, 2, 2], [4, 4, 3, 2, 1], [4, 4, 4, 2, 2]]; // NOT IN REFS — from memory of the core book; check
+export const WIZARD_KNOWN = [[3], [4], [4, 1], [4, 2], [4, 2, 1], [4, 3, 2], [4, 3, 2, 1], [4, 4, 2, 2], [4, 4, 3, 2, 1], [4, 4, 4, 2, 2]]; // verified against the core PDF (2026-09-17) — exact match, no longer a guess
 
 // Witch — Cursed Scroll 1
 export const WITCH_SPELLS = [
@@ -203,23 +203,24 @@ export const SD_CLASSES = {
   fighter: {
     n: "Fighter", hd: 8, weapons: null, armor: ["leather", "chainmail", "plate"], shield: true,
     features: [["Hauler", "Adds CON mod (if positive) to gear slots."], ["Weapon Mastery", "+1 attack and damage with {mastery}, plus half level."], ["Grit", "Advantage on {grit} checks to overcome an opposing force."]],
-    talent: (r) => r === 2 ? ["Weapon Mastery with one more weapon type", { mastery: 1 }] : r <= 6 ? ["+1 to melee and ranged attacks", { atk: 1 }] : r <= 9 ? ["+2 to {stat}", { stat: ["STR", "DEX", "CON"], amt: 2 }] : r <= 11 ? ["+1 AC while wearing armour", { ac: 1 }] : ["+2 stat points", { pick: 1 }],
+    talent: (r) => r === 2 ? ["Weapon Mastery with one more weapon type", { mastery: 1 }] : r <= 6 ? ["+1 to melee and ranged attacks", { atk: 1 }] : r <= 9 ? ["+2 to {stat}", { stat: ["STR", "DEX", "CON"], amt: 2 }] : r <= 11 ? ["+1 AC while wearing armour", { ac: 1 }] : ["Choose a talent, or +2 points to distribute to stats", { pick: 1 }],
   },
   priest: {
     n: "Priest", hd: 6, weapons: ["club", "crossbow", "dagger", "mace", "longsword", "staff", "warhammer"], armor: ["leather", "chainmail", "plate"], shield: true, cast: "WIS", spells: PRIEST_SPELLS, known: PRIEST_KNOWN, rareLang: 1,
     features: [["Turn Undead", "Knows Turn Undead (doesn't count against spells known)."], ["Deity", "Serves {deity}; holy symbol takes no gear slot."], ["Spellcasting", "WIS-based. Spell DC = 10 + tier."]],
-    talent: (r) => r === 2 ? ["Advantage when casting {spell}", { advSpell: 1 }] : r <= 6 ? ["+1 to melee and ranged attacks", { atk: 1 }] : r <= 9 ? ["+1 to priest spellcasting checks", { cast: 1 }] : r <= 11 ? ["+2 to {stat}", { stat: ["STR", "WIS"], amt: 2 }] : ["+2 stat points", { pick: 1 }],
+    talent: (r) => r === 2 ? ["Advantage when casting {spell}", { advSpell: 1 }] : r <= 6 ? ["+1 to melee and ranged attacks", { atk: 1 }] : r <= 9 ? ["+1 to priest spellcasting checks", { cast: 1 }] : r <= 11 ? ["+2 to {stat}", { stat: ["STR", "WIS"], amt: 2 }] : ["Choose a talent, or +2 points to distribute to stats", { pick: 1 }],
   },
   thief: {
     n: "Thief", hd: 4, weapons: ["club", "crossbow", "dagger", "shortbow", "shortsword"], armor: ["leather"], shield: false,
     features: [["Backstab", "+{backstab} weapon dice against an unaware target."], ["Thievery", "Advantage on climbing, sneaking, hiding, disguise, traps, and picking pockets and locks. Thief's tools take no gear slot."]],
-    talent: (r) => r === 2 ? ["Advantage on initiative", { init: 1 }] : r <= 5 ? ["Backstab deals +1 die", { backstab: 1 }] : r <= 9 ? ["+2 to {stat}", { stat: ["STR", "DEX", "CHA"], amt: 2 }] : r <= 11 ? ["+1 to melee and ranged attacks", { atk: 1 }] : ["+2 stat points", { pick: 1 }],
+    talent: (r) => r === 2 ? ["Advantage on initiative", { init: 1 }] : r <= 5 ? ["Backstab deals +1 die", { backstab: 1 }] : r <= 9 ? ["+2 to {stat}", { stat: ["STR", "DEX", "CHA"], amt: 2 }] : r <= 11 ? ["+1 to melee and ranged attacks", { atk: 1 }] : ["Choose a talent, or +2 points to distribute to stats", { pick: 1 }],
   },
   wizard: {
     n: "Wizard", hd: 4, weapons: ["dagger", "staff"], armor: [], shield: false, cast: "INT", spells: WIZARD_SPELLS, known: WIZARD_KNOWN, commonLang: 2, rareLang: 2,
     features: [["Learning Spells", "DC 15 INT and a day's study to learn a spell from a scroll."], ["Spellcasting", "INT-based. Spell DC = 10 + tier."]],
-    // NOT IN REFS — wizard talent table is from memory of the core book; check
-    talent: (r) => r === 2 ? ["Can make one random magic item", { item: 1 }] : r <= 7 ? (chance(0.5) ? ["+2 to INT", { stat: ["INT"], amt: 2 }] : ["+1 to wizard spellcasting checks", { cast: 1 }]) : r <= 9 ? ["Advantage when casting {spell}", { advSpell: 1 }] : r <= 11 ? ["Knows one extra wizard spell", { spell: 1 }] : ["+2 stat points", { pick: 1 }],
+    // verified against the core PDF (2026-09-17) — wording updated to match; r===12 was wrongly flattened
+    // to just "+2 stat points" before, dropping the "or choose a talent" half the book actually gives
+    talent: (r) => r === 2 ? ["Make one random magic item of a type you choose", { item: 1 }] : r <= 7 ? (chance(0.5) ? ["+2 to INT", { stat: ["INT"], amt: 2 }] : ["+1 to wizard spellcasting checks", { cast: 1 }]) : r <= 9 ? ["Advantage when casting {spell}", { advSpell: 1 }] : r <= 11 ? ["Learn one additional wizard spell of any tier you know", { spell: 1 }] : ["Choose a talent, or +2 points to distribute to stats", { pick: 1 }],
   },
   roustabout: {
     n: "Roustabout", hd: 4, weapons: ["club", "dagger", "staff"], armor: ["leather"], shield: false, src: "Western Reaches",
@@ -312,11 +313,14 @@ export const CLASS_CHANCE_DEFAULT = 0.05;
 export const RARE_CLASS_CHANCE = 0.005;
 export const RARE_CLASS_POOL = [["warlock", 5], ["witch", 4], ["knightydris", 1]];
 
-// Shadowdark core d20 backgrounds — NOT IN REFS (list from the core book); check
+// Shadowdark core d20 backgrounds — the 20 names are verified against the core PDF (2026-09-17;
+// "Barbarian" was missing before and has been added). The book's own table is a flat, uncategorized
+// d20 roll — the grouping below by job category (labor/trade/crime/martial/arcane/clergy/noble) is
+// this project's own invention for filtering by job, not something the book does.
 
 export const ROLE_BACKGROUND = {
-  labor: ["Urchin", "Orphaned", "Sailor", "Mercenary", "Banished"], trade: ["Jeweler", "Herbalist", "Minstrel", "Scholar", "Orphaned"],
-  crime: ["Thieves' Guild", "Urchin", "Wanted", "Banished", "Mercenary"], martial: ["Soldier", "Mercenary", "Scout", "Ranger", "Noble"],
+  labor: ["Urchin", "Orphaned", "Sailor", "Mercenary", "Banished", "Barbarian"], trade: ["Jeweler", "Herbalist", "Minstrel", "Scholar", "Orphaned"],
+  crime: ["Thieves' Guild", "Urchin", "Wanted", "Banished", "Mercenary"], martial: ["Soldier", "Mercenary", "Scout", "Ranger", "Noble", "Barbarian"],
   arcane: ["Wizard's Apprentice", "Scholar", "Minstrel", "Noble"], clergy: ["Acolyte", "Cult Initiate", "Orphaned", "Chirurgeon"],
   noble: ["Noble", "Scholar", "Minstrel"],
 };
