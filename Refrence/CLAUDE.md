@@ -42,8 +42,12 @@ A referee's console for his Shadowdark campaign in **the City of Masks (Meridia)
 - **Prep mode / Play mode.** Play hides destructive buttons and slims each app down.
 - Players keep normal character sheets.
 
-## Current state — v13 (last version built in claude.ai)
-The file is `meridia-os-v13.jsx`, a single-file React app of about 4,650 lines. **First job: turn it into a real project** (see Migration).
+## Current state — migrated to a real project (2026-09-16)
+`meridia-os-v13.jsx` (kept in the project root for reference, untouched) has been split into a real **Vite + React** project under `src/`: `lib/` (theme, rng, audio, storage), `data/` (npc.js, shadowdark.js — the tables), `logic/` (generator.js, sheet.js — the rules), `ui/` (primitives.jsx, CharSheet.jsx), and `App.jsx` (the shell). Saves now go through real `localStorage` (`src/lib/storage.js`), same key (`meridia-os:v7`) and format as before, so old backups still restore. Git is initialized with one commit. Node.js and Git were not installed on this machine — both were installed via `winget` with Caleb's go-ahead.
+
+Behaviour and look were not changed. Verified in the browser after the split: NPC generation (Scan), Book NPC hydration, the Combat character sheet (stats/HP/AC), damage tracking (DMG/HEAL/-1/-3/-5 syncing HP everywhere), crowd muster, Locations (scan-here), Party, Config (including Your data → backup), PREP/PLAY mode, and global search.
+
+**First job left: turn it into a real project** — mostly done; see Migration below for what's left (regression scripts, world-data file sync).
 
 **Shell**
 - Three columns: the open app, the NPC file, and a party rail in Play mode.
@@ -77,10 +81,10 @@ The file is `meridia-os-v13.jsx`, a single-file React app of about 4,650 lines. 
 **Internal ids you must not rename:** app/tab ids `scan`, `named`, `muster`, `archive`, `city`; the old ones map to `npcs` via `LEGACY_APP`.
 
 ## Migration (first sessions)
-1. Turn v13 into a **Vite + React** project, split into sensible files. **Don't change how anything looks or works.** Tailwind must behave as it did in claude.ai.
-2. Replace `window.storage` (claude.ai only) with `localStorage`, keeping the **same key and backup format** so his Backup text restores.
-3. Set up git, write a plain-English `README.md` ("how to start the app"), and start the dev server so he can check it.
-4. Rebuild the regression tests v13 was checked with, as scripts he can run with one command:
+1. ✅ Turned v13 into a **Vite + React** project, split into sensible files. Tailwind behaves the same (only standard utility classes were used, no arbitrary-value syntax, so no config surprises).
+2. ✅ Replaced `window.storage` (claude.ai only) with `localStorage`, keeping the **same key and backup format** so his Backup text restores.
+3. ✅ Git set up (one commit so far), `README.md` written, dev server runs (`npm run dev`).
+4. **Still to do:** rebuild the regression tests v13 was checked with, as scripts he can run with one command:
    - generate ~60,000 NPCs across every filter combination and check for broken text, unfilled `{tokens}`, and contradictions;
    - check every character sheet is legal: class weapons and armour, slots, spell counts, HP/AC ranges.
 5. Later, save world data to a file in the project folder so git syncs it between his **desktop and laptop**. Browser storage doesn't sync.
