@@ -31,6 +31,7 @@ import {
   REACT_ORDER, reactionLabel, reactionRoll, rollRecord, rollConditions, rollSituation,
   rollPlaces, rollShop, rollRumors, rollVoice, rollConnections, buildOpener, helpPrice,
   pickMask, rollOrigin, rollFaith, generateNPC, hydrateBookNpc, muster, rollSecret,
+  generateSeeded, randomSeed, diffNpc, applyEdits,
 } from "./logic/generator.js";
 import { buildSheet, sdMods, gearSlotsUsed, walletText, hpState, rollDamage } from "./logic/sheet.js";
 import {
@@ -112,6 +113,29 @@ export function setPath(o, p, v) {
 
 export const STORE_KEY = "meridia-os:v7";
 
+/* A saved NPC that came from a plain scan carries the seed and settings it was generated with —
+   regenerating from those and reapplying whatever differs (a manual edit, a partial reroll, a
+   damage tick — the diff doesn't need to know which) reproduces it exactly, for a fraction of the
+   stored size. Anything without a seed (a book NPC, a crowd member, or a save from before this
+   existed) is kept as a full object — nothing is ever orphaned, it's just not compacted. */
+export function compactForSave(n) {
+  if (n.seed === undefined && n.seed !== 0) return n;
+  const fresh = generateSeeded(n.seed, n.genSettings, n.genKeep || {});
+  const edits = diffNpc(fresh, n);
+  return { id: n.id, seed: n.seed, genSettings: n.genSettings, genKeep: n.genKeep || {}, edits, packed: true };
+}
+
+export function expandFromSave(n) {
+  if (!n || !n.packed) return n;
+  try {
+    const fresh = generateSeeded(n.seed, n.genSettings, n.genKeep || {});
+    return applyEdits(fresh, n.edits, n.id);
+  } catch (e) {
+    return n; // regeneration should never throw (the regression suite checks this) — if it ever
+    // does, hand back the packed shell rather than losing the save entirely
+  }
+}
+
 
 export const BLOCK_DEFS = [
   ["open", "Read-aloud opener"], ["origin", "Origin in the Reaches"], ["faith", "Faith & the Nine"],
@@ -177,7 +201,7 @@ export const DEFAULTS = {
   time: "day", holiday: "none", cat: "any", job: "any", jobs: null, tier: "any",
   lvMin: 0, lvMax: 10, align: "any", faction: "any", ancestry: "any", gender: "any",
   band: "any", competence: "mixed", record: "auto", conditions: "auto",
-  seenAt: null, tmplName: null, mundane: false, crowd: 4, sound: true,
+  seenAt: null, tmplName: null, mundane: false, crowd: 4, sound: true, soundUI: true, soundCombat: true,
   uiMode: "prep", partyRail: true,
   // shell settings (Config)
   modeApps: null, collapsed: {}, zoom: 1, leftW: 380, vol: 1, nickChance: 0.3,
@@ -297,7 +321,8 @@ export default function MeridiaOS() {
   const collapsed = s.collapsed || {};
   const cp = (k) => ({ collapsed: !!collapsed[k], onCollapse: () => { snd(SFX.toggle); setS((p) => ({ ...p, collapsed: { ...(p.collapsed || {}), [k]: !(p.collapsed || {})[k] } })); } });
   const collapseAll = (on) => { snd(SFX.tap); setS((p) => ({ ...p, collapsed: on ? Object.fromEntries(BLOCK_KEYS_ALL.map((k) => [k, true])) : {} })); };
-  const snd = (fn) => { if (s.sound) fn(); };
+  const snd = (fn) => { if (s.sound && s.soundUI) fn(); };
+  const sndCombat = (fn) => { if (s.sound && s.soundCombat) fn(); };
   const toastTimer = useRef(null);
   const flash = (m, bad) => { setToast({ m, bad }); snd(bad ? SFX.alert : SFX.save); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), bad ? 3200 : 1800); };
 
@@ -340,7 +365,7 @@ export default function MeridiaOS() {
         ok = true;
         if (alive && r && r.value) {
           const v = JSON.parse(r.value);
-          if (v.roster) setRoster(v.roster);
+          if (v.roster) setRoster(v.roster.map(expandFromSave));
           if (v.groups) setGroups(v.groups);
           if (v.presets) setPresets(v.presets);
           if (v.pcs) setPcs(v.pcs);
@@ -367,7 +392,7 @@ export default function MeridiaOS() {
     if (!loaded || saveState === "blocked") return;
     const t = setTimeout(async () => {
       try {
-        const r = await Storage.set(STORE_KEY, JSON.stringify({ roster, groups, presets, pcs, settings: s, show, order }));
+        const r = await Storage.set(STORE_KEY, JSON.stringify({ roster: roster.map(compactForSave), groups, presets, pcs, settings: s, show, order }));
         setSaveState(r ? "ok" : "failed");
       } catch (e) { setSaveState("failed"); }
     }, 500); // typing in notes no longer rewrites the whole save on every keystroke
@@ -425,18 +450,19 @@ export default function MeridiaOS() {
     updateAny(next);
     const half = Math.floor(sd.hp / 2);
     if (delta < 0) {
-      snd(SFX.alert);
-      if (sd.hpNow === 0 && before > 0) flash(`${t.first} is down — dying. Timer ${sd.deathTimer}.`, true);
+      const dying = sd.hpNow === 0 && before > 0;
+      sndCombat(dying ? SFX.dying : SFX.damage);
+      if (dying) flash(`${t.first} is down — dying. Timer ${sd.deathTimer}.`, true);
       else if (sd.hpNow <= half && before > half) flash(`${t.first} is bloodied — morale: DC 15 WIS or flee.`, true);
-    } else snd(SFX.save);
+    } else sndCombat(SFX.heal);
   };
-  const setHpStatus = (t, status) => { const next = { ...t, sd: { ...t.sd, status } }; syncThreat(next, true); updateAny(next); snd(SFX.toggle); };
+  const setHpStatus = (t, status) => { const next = { ...t, sd: { ...t.sd, status } }; syncThreat(next, true); updateAny(next); if (status === "dead") sndCombat(SFX.death); else snd(SFX.toggle); };
   const rollAttack = (t, a) => {
     const nat = 1 + Math.floor(Math.random() * 20);
     const bonus = typeof a.bonus === "number" ? a.bonus : Number(a.bonus) || 0;
     const crit = nat === 20, fumble = nat === 1;
     const dmg = rollDamage(a.dmg, crit);
-    snd(fumble ? SFX.alert : SFX.scan);
+    sndCombat(fumble ? SFX.fumble : crit ? SFX.crit : SFX.hit);
     setRollLog((l) => [{ id: Math.random(), npcId: t.id, who: t.first, w: a.n, nat, total: nat + bonus, bonus, crit, fumble, dmg }, ...l].slice(0, 6));
   };
   const hpCtl = (t, compact) => {
@@ -484,7 +510,13 @@ export default function MeridiaOS() {
         </div>))}
     </div>) : null;
   const openNpc = (n) => { snd(SFX.tap); setNpc(roster.find((x) => x.id === n.id) || n); setShowText(false); setNumDraft({}); };
-  const run = (override = {}, keep = {}) => { snd(SFX.scan); setNpc(generateNPC({ ...s, ...override }, keep)); setShowText(false); setNumDraft({}); };
+  const run = (override = {}, keep = {}) => {
+    snd(SFX.scan);
+    const genSettings = { ...s, ...override }, seed = randomSeed();
+    const next = generateSeeded(seed, genSettings, keep);
+    next.seed = seed; next.genSettings = genSettings; next.genKeep = keep;
+    setNpc(next); setShowText(false); setNumDraft({});
+  };
   const runCrowd = (override = {}, label = "") => {
     snd(SFX.muster);
     const st = { ...s, ...override };
@@ -1162,13 +1194,13 @@ export default function MeridiaOS() {
       </div>
     );
     if (sub === "data") {
-      const payload = JSON.stringify({ roster, groups, presets, pcs, settings: s, show, order });
+      const payload = JSON.stringify({ roster: roster.map(compactForSave), groups, presets, pcs, settings: s, show, order });
       const kb = payload.length / 1024, cap5 = 5 * 1024, pct = Math.min(100, (kb / cap5) * 100);
       const doRestore = () => {
         try {
           const v = JSON.parse(restoreDraft);
           if (!v || typeof v !== "object" || !Array.isArray(v.roster)) throw new Error("not a Meridia backup");
-          setRoster(v.roster); setGroups(Array.isArray(v.groups) ? v.groups : []); setPresets(Array.isArray(v.presets) ? v.presets : []);
+          setRoster(v.roster.map(expandFromSave)); setGroups(Array.isArray(v.groups) ? v.groups : []); setPresets(Array.isArray(v.presets) ? v.presets : []);
           setPcs(Array.isArray(v.pcs) ? v.pcs : []);
           if (v.settings) setS({ ...DEFAULTS, ...v.settings });
           if (v.show) setShow({ ...Object.fromEntries(DEFAULT_ORDER.map((k) => [k, true])), ...v.show });
@@ -1337,6 +1369,19 @@ export default function MeridiaOS() {
           <Group title="SOUND">
             <Toggle on={s.sound} label="System sounds" onClick={() => { set("sound", !s.sound); if (!s.sound) SFX.open(); }} />
             {s.sound && <Seg label="VOLUME" value={s.vol} onChange={(v) => { set("vol", v); setVol(v); SFX.tap(); }} options={[[0.4, "Quiet"], [1, "Normal"], [1.8, "Loud"]]} />}
+            {s.sound && <Toggle on={s.soundUI} label="Interface sounds (taps, tabs, saves)" onClick={() => { set("soundUI", !s.soundUI); if (!s.soundUI) SFX.tap(); }} />}
+            {s.sound && <Toggle on={s.soundCombat} label="Combat sounds (hits, damage, dying)" onClick={() => { set("soundCombat", !s.soundCombat); if (!s.soundCombat) SFX.hit(); }} />}
+            {s.sound && <div className="mt-2">
+              <div style={{ color: C.dim, fontSize: 10, letterSpacing: "0.1em", marginBottom: 5 }}>TEST SOUNDS</div>
+              <div className="flex flex-wrap gap-1">
+                {[["Tap", SFX.tap], ["Open", SFX.open], ["Save", SFX.save], ["Alert", SFX.alert], ["Scan", SFX.scan]].map(([lb, fn]) => (
+                  <Btn key={lb} flex={false} onClick={fn}>{lb}</Btn>
+                ))}
+                {[["Hit", SFX.hit], ["Crit", SFX.crit], ["Fumble", SFX.fumble], ["Damage", SFX.damage], ["Heal", SFX.heal], ["Dying", SFX.dying], ["Death", SFX.death]].map(([lb, fn]) => (
+                  <Btn key={lb} flex={false} tone={C.blood} onClick={fn}>{lb}</Btn>
+                ))}
+              </div>
+            </div>}
           </Group>
           <Group title="MORE">
             {CONFIG_PAGES.map(([id, nm, subline]) => (

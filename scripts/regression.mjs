@@ -8,7 +8,7 @@
 // Pure data/logic modules only — no React, no DOM — so this runs directly under Node.
 
 import { setRNG, seededRNG } from "../src/lib/rng.js";
-import { generateNPC, hydrateBookNpc } from "../src/logic/generator.js";
+import { generateNPC, hydrateBookNpc, generateSeeded, diffNpc, applyEdits, randomSeed } from "../src/logic/generator.js";
 import {
   ARCHETYPES, TEMPLATES, CATS, FACTIONS, TIER_LV, ANCESTRY_WEIGHTS_WR, BOOK_NPCS, NOTABLE_SECRETS,
 } from "../src/data/npc.js";
@@ -178,6 +178,45 @@ for (const b of BOOK_NPCS) {
 // 6) large plain-random sample — most likely to surface the rare secret-class overlay
 const RANDOM_SAMPLE = 40000;
 for (let i = 0; i < RANDOM_SAMPLE; i++) run(BASE, {}, "random");
+
+// 7) seed + edits round-trip — the mechanism the save format depends on. For each of a wide
+// mix of settings: generate from an explicit seed, simulate a few "edits" (a manual field change,
+// a partial reroll — the diff can't tell those apart and shouldn't need to), diff against a fresh
+// regeneration from the same seed, reapply the diff, and require the result to be byte-identical
+// to the edited NPC. This is what makes it safe to store {seed, settings, edits} instead of the
+// whole ~5KB object.
+function roundTripCheck(settings, ctx) {
+  const seed = randomSeed();
+  let npc;
+  try { npc = generateSeeded(seed, settings, {}); npc.seed = seed; npc.genSettings = settings; npc.genKeep = {}; }
+  catch (e) { flag("seeded-gen-crash", `${e.message}\n${e.stack}`, null, ctx); return; }
+
+  // the meta fields (seed/genSettings/genKeep) travel with the object as bookkeeping, reattached
+  // by the caller after any regeneration — never part of the diff, but needed on both sides of
+  // an equality check or the comparison is apples-to-oranges
+  const reattach = (o) => { o.seed = seed; o.genSettings = settings; o.genKeep = {}; return o; };
+
+  // unedited: diffing a pristine generation against itself should be empty, and reapplying
+  // an empty diff must reproduce the original exactly
+  const freshAgain = generateSeeded(seed, settings, {});
+  const emptyDiff = diffNpc(freshAgain, npc);
+  if (Object.keys(emptyDiff).length) flag("edit-diff-not-empty", `unedited NPC produced a non-empty diff: ${Object.keys(emptyDiff).join(", ")}`, npc, ctx);
+  const rebuiltPristine = reattach(applyEdits(freshAgain, emptyDiff, npc.id));
+  if (JSON.stringify(rebuiltPristine) !== JSON.stringify(npc)) flag("roundtrip-mismatch-pristine", "regenerating with an empty diff didn't reproduce the original", npc, ctx);
+
+  // edited: mutate a handful of fields the way real usage would (a manual rename, a record
+  // reroll, a damage tick), then require the diff+reapply cycle to reproduce the edited NPC
+  const edited = { ...npc, name: npc.name + " the Edited", first: npc.first, band: (npc.band + 1) % 5, opener: "manually overwritten opener text" };
+  if (edited.sd) edited.sd = { ...edited.sd, hpNow: Math.max(0, edited.sd.hp - 3) };
+  const edits = diffNpc(freshAgain, edited);
+  if (!("name" in edits) || !("opener" in edits)) flag("edit-diff-missing-field", `expected edits to capture name/opener, got: ${Object.keys(edits).join(", ")}`, npc, ctx);
+  const rebuiltEdited = reattach(applyEdits(freshAgain, edits, npc.id));
+  if (JSON.stringify(rebuiltEdited) !== JSON.stringify(edited)) flag("roundtrip-mismatch-edited", "regenerating + reapplying edits didn't reproduce the edited NPC", npc, ctx);
+}
+
+for (const roleId of Object.keys(ARCHETYPES)) roundTripCheck({ ...BASE, job: roleId }, `seeded job=${roleId}`);
+for (const t of TEMPLATES) for (let i = 0; i < 10; i++) roundTripCheck({ ...BASE, ...t.p, tmplName: t.name }, `seeded template=${t.id}`);
+for (let i = 0; i < 2000; i++) roundTripCheck(BASE, "seeded random");
 
 // ---- report ----
 

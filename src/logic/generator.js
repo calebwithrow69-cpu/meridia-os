@@ -649,6 +649,55 @@ export function generateNPC(s, keep = {}) {
 }
 
 
+/* ---- seed + edits: regenerating a saved NPC instead of storing the whole ~5KB object ----
+   generateNPC is fully deterministic once RNG is swapped to a seeded stream (this is exactly
+   what hydrateBookNpc already relies on below) — the only thing that ISN'T reproducible from a
+   seed is `id`, which comes from Math.random() directly rather than RNG, so it's always carried
+   separately rather than diffed. Saving becomes: seed + the settings/keep used + whatever fields
+   differ from a fresh regeneration (an edit, a partial reroll, a manual EDIT-mode change — the
+   diff doesn't need to know which). Loading is: regenerate, then reapply those fields. */
+
+export function randomSeed() {
+  return Math.floor(Math.random() * 0xFFFFFFFF);
+}
+
+export function generateSeeded(seed, settings, keep) {
+  const prev = RNG;
+  setRNG(seededRNG(seed));
+  try { return generateNPC(settings, keep || {}); }
+  finally { setRNG(prev); }
+}
+
+// fields that are never part of the diff — always carried on the compact record itself, or
+// never meaningful to restore verbatim (transient/derived at render time)
+const EDIT_EXCLUDE = new Set(["id", "seed", "genSettings", "genKeep"]);
+
+export function diffNpc(fresh, current) {
+  const edits = {};
+  for (const k of Object.keys(current)) {
+    if (EDIT_EXCLUDE.has(k)) continue;
+    if (JSON.stringify(current[k]) !== JSON.stringify(fresh[k])) edits[k] = current[k];
+  }
+  return edits;
+}
+
+export function applyEdits(fresh, edits, id) {
+  const out = { ...fresh, ...edits };
+  if (id) out.id = id;
+  return out;
+}
+
+// true only if regenerating from the stored seed and reapplying edits reproduces `current`
+// exactly (aside from `id`) — used by the regression suite, and safe to call from the app too
+export function verifyRoundTrip(current) {
+  if (!current.seed && current.seed !== 0) return false;
+  const fresh = generateSeeded(current.seed, current.genSettings, current.genKeep);
+  const edits = diffNpc(fresh, current);
+  const rebuilt = applyEdits(fresh, edits, current.id);
+  return JSON.stringify(rebuilt) === JSON.stringify(current);
+}
+
+
 /* ---- which chassis each named person runs on, and their gender ---- */
 
 export function hydrateBookNpc(b, settings) {
