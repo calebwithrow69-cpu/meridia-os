@@ -20,10 +20,15 @@ A referee's console for his Shadowdark campaign in **the City of Masks (Meridia)
 ## Reference files (in this folder) — order of authority
 1. `Shadowdark_RPG_-_V4-9.pdf` — **the core rulebook. Final authority on all rules, tables and prices.**
 2. `shadowdark-ruleset-compilation.md` — an extracted summary of the core rules. Handy, but if it disagrees with the PDF, **the PDF wins**. Tell Caleb about any disagreement you find.
-3. `975179835-Cursed-Scroll-6-City-of-Masks…pdf` — the city: districts, 50 numbered locations, book NPCs, rumours, city tables, carousing, the map (pages 2–3).
-4. `Player's Guide to the Western Reaches (Preview).pdf` — ancestry population table, Half-elf, the Roustabout and Warlock classes, factions, city-states.
+3. `975179835-Cursed-Scroll-6-City-of-Masks…pdf` — the city: districts, 50 numbered locations, book NPCs, rumours, city tables, carousing, the map (pages 2–3). Also the **Duelist class**.
+4. `Player's Guide to the Western Reaches (Preview).pdf` — ancestry population table, Half-elf, the Roustabout class, factions, city-states.
 5. `Game Master's Guide to the Western Reaches (Preview).pdf` — the Nine gods, the Lost, regional detail.
 6. `equipment-emporium-shadowdark.md` — supplementary gear converted to Shadowdark. Weapons and armour are excluded because the core book covers them. Every item has a shop-tier tag `[P][M][U][H]`; §21 says which shop types stock what.
+7. `Cursed Scroll 1 -character options.pdf` — the **Warlock** (six named patrons, replacing the old Western Reaches warlock — see below), **Witch**, and **Knight of St. Ydris** classes, plus their shared Diabolical Background table.
+8. `Cursed Scroll 2 - Red Sands V2-2.pdf`, `Cursed Scroll 3 - Midnight Sun V3-5.pdf` — Desert Rider, Pit Fighter, Ras-Godai, Sea Wolf, Seer classes and setting material. Not yet wired into the generator.
+9. `Bard and Ranger Classes V1-3.pdf` — the **Bard** and **Ranger** classes.
+
+**No Kobold ancestry exists in any reference file** — checked the core rulebook and both Western Reaches previews; Kobold only appears as one line on a population-roll table with no trait attached. Dropped from the pickable ancestry list (2026-09-17) rather than invented. If a full (non-preview) Player's Guide turns up with real Kobold text, wire it back in.
 
 **Never invent a rule and present it as canon.** If something isn't in the files, mark it in code with `// NOT IN REFS — check` and tell him.
 
@@ -89,8 +94,16 @@ Behaviour and look were not changed. Verified in the browser after the split: NP
    - check every character sheet is legal: class weapons and armour, slots, spell counts, HP/AC ranges.
 5. Later, save world data to a file in the project folder so git syncs it between his **desktop and laptop**. Browser storage doesn't sync.
 
+## Classes are vocations, not stat blocks (2026-09-17)
+Most NPCs have **no Shadowdark class at all** — a shopkeeper isn't secretly a Fighter just to have a stat block. `CLASS_CHANCE` (`src/data/shadowdark.js`) gives each job a probability of having any class; most trade/labor jobs are under 10%, martial/arcane/clergy jobs where the job *is* the training run 80–95%. A miss means the level0 chassis, but still scaled off the job's own hit die at higher levels — no talents, no class weapon lock, just a capable civilian.
+On top of that, `RARE_CLASS_CHANCE` (0.5%) lets a **Warlock, Witch, or Knight of St. Ydris** turn up under any job at all, any level, regardless of the normal odds — a shopkeeper, a beggar, a guard. This is deliberate: those three are supposed to be a surprise. When one hits, the NPC gets a "⚠ NOT WHAT THEY SEEM" badge, a background drawn from the Diabolical Background table instead of their job's usual pool, and a small bump to their record heat (they have more to hide). Knight of St. Ydris never appears in the ordinary per-job pools — only through this rare overlay, since it's a secret cursed order, not a career.
+Six named Warlock patrons (Almazzat, Kytheros, Mugdulblub, Shune the Vile, Titania, the Willowman) live in `WARLOCK_PATRONS`, each with its own boon table from Cursed Scroll 1. Note: Shune the Vile is *also* one of the Nine Gods in the existing faith system — that's not a bug, both books use the same deity.
+Templates got a light pass to match (see `TEMPLATES` in `npc.js`) — added a "Duelist" scenario. The rest were already reasonable scenario buckets; the actual "whim" was the class-assignment mechanic underneath, not the menu.
+
 ## Known issues and to-dos
-- **Check against the core PDF:** the wizard spells-known table, the wizard talent table, the 20 backgrounds (all written from memory), and the kobold ancestry trait (placeholder).
+- Fixed a latent bug: the wizard's talent table called `chance()` and `pick()` but neither was imported in `shadowdark.js` — would have thrown if a wizard ever rolled a talent in the 3–7 range. Now imported.
+- **Check against the core PDF:** the wizard spells-known table, the wizard talent table, and the 20 backgrounds (all written from memory).
+- Cursed Scroll 2 and 3's classes (Desert Rider, Pit Fighter, Ras-Godai, Sea Wolf, Seer) aren't wired into the generator yet — flag if he wants them added.
 - **Sound is harsh.** Rebuild it: filtered, layered, stereo, cyberpunk, no audio files; quiet interface sounds, distinct combat sounds; separate interface/combat toggles; a "test sounds" row.
 - The core reaction table makes about 43% of strangers Hostile at CHA +0. He chose canon; revisit this in the Social phase if it plays badly.
 - Saving should move to **seed + edits** instead of full NPC objects (~5 KB each now).

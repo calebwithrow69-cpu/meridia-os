@@ -91,7 +91,9 @@ export function repairDetails(n) {
     n.sd.deity = n.faith.name;
     const row = TITLES[n.sd.clsId] && TITLES[n.sd.clsId][n.al];
     if (row) n.sd.title = row[Math.min(4, Math.floor((n.lv - 1) / 2))];
-    n.sd.features = n.sd.features.map((f) => f.n === "Deity" || f.n === "Patron" ? { ...f, t: f.t.replace(/Serves [^;,]+/, `Serves ${n.faith.name}`) } : f);
+    // "Deity" (Priest) tracks npc.faith — one of the Nine Gods. A Warlock's "Patron" is a separate,
+    // named eldritch being (see WARLOCK_PATRONS) and must not be overwritten with a rolled faith.
+    n.sd.features = n.sd.features.map((f) => f.n === "Deity" ? { ...f, t: f.t.replace(/Serves [^;,]+/, `Serves ${n.faith.name}`) } : f);
   }
   // you don't avoid the place where someone you work or drink with spends their days
   const friendly = /works for|drinks with|trades goods|grew up alongside|is owed a favour|cousin/;
@@ -261,7 +263,8 @@ export function reactionRoll(mod = 0) {
 
 export function rollRecord(npc, s) {
   if (s.record === "none") return { state: RECORD_STATES[0], crime: null, detail: "Never been taken.", tone: C.green };
-  const heat = npc.arch.crim * 2 + FACTIONS[npc.facId].crim + (npc.al === "C" ? 2 : npc.al === "L" ? -1 : 0) + (npc.band <= 1 ? 1 : 0);
+  // someone hiding a warlock's pact, a witch's craft, or a cursed knighthood has more to lose if found out
+  const heat = npc.arch.crim * 2 + FACTIONS[npc.facId].crim + (npc.al === "C" ? 2 : npc.al === "L" ? -1 : 0) + (npc.band <= 1 ? 1 : 0) + (npc.sd && npc.sd.notable ? 2 : 0);
   let stateId;
   if (s.record === "certain") stateId = pick(["pursued", "wanted", "served", "bought", "exiled"]);
   else if (s.record === "likely") stateId = heat >= 4 ? pick(["pursued", "served", "suspect", "bought", "wanted"]) : pick(["suspect", "served", "pursued"]);
@@ -610,6 +613,9 @@ export function generateNPC(s, keep = {}) {
 
   npc.origin = keep.origin || rollOrigin(anc, arch.cat);
   npc.faith = keep.faith || rollFaith(al, facId, roleId);
+  // sd is built before record so a warlock/witch/knight of St. Ydris can weigh their own record roll
+  npc.sd = buildSheet(npc, s);
+  syncThreat(npc);
   npc.record = keep.record || rollRecord(npc, s);
   // you cannot be both publicly wanted for a major crime and a celebrity
   if (["wanted", "exiled"].includes(npc.record.state.id)) npc.renown = Math.min(npc.renown, 5);
@@ -617,8 +623,6 @@ export function generateNPC(s, keep = {}) {
   npc.abilities = rollAbilities(npc);
   npc.conds = keep.conds || rollConditions(npc, s);
   npc.sit = keep.sit || rollSituation(npc);
-  npc.sd = buildSheet(npc, s);
-  syncThreat(npc);
 
   let rmod = 0;
   if (npc.conds.some((c) => c.n === "Starving" || c.n === "Bloodroot withdrawal")) rmod -= 1;

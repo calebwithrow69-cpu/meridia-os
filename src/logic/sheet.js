@@ -3,14 +3,33 @@ import { RNG, d, pick, chance, clamp, fmt, weighted, drawN } from "../lib/rng.js
 import {
   ABILITIES, SD_STATS, modOf, SCORE_BAND, scoreFor, SD_WEAPONS, SD_ARMOR, SD_ANCESTRY,
   COMMON_LANGS, RARE_LANGS, TITLES, PRIEST_SPELLS, WIZARD_SPELLS, PRIEST_KNOWN, WIZARD_KNOWN,
-  SD_CLASSES, ROLE_CLASS, ROLE_BACKGROUND, ROLE_BG_FIXED, GEAR, BAND_EXTRAS, OUTFITS,
+  SD_CLASSES, ROLE_CLASS, CLASS_CHANCE, CLASS_CHANCE_DEFAULT, RARE_CLASS_CHANCE, RARE_CLASS_POOL,
+  WARLOCK_PATRONS, DIABOLICAL_BG, ROLE_BACKGROUND, ROLE_BG_FIXED, GEAR, BAND_EXTRAS, OUTFITS,
   OUTFIT_BY_ROLE, ROLE_KIT, WALLET, WALLET_BONUS, rollDice,
 } from "../data/shadowdark.js";
 
+const RARE_CLASSES = RARE_CLASS_POOL.map(([id]) => id);
+
+// Most people have no Shadowdark class at all — a shopkeeper isn't secretly a Fighter just to have a
+// stat block. classChance gates whether this NPC trained as anything; the rare overlay lets a warlock,
+// witch, or Knight of St. Ydris turn up under any job at all, which is the point of them.
+function pickClass(npc) {
+  const lv = npc.lv;
+  if (lv === 0 || npc.roleId === "child") return { clsId: "level0", notable: false };
+  if (chance(RARE_CLASS_CHANCE)) return { clsId: weighted(RARE_CLASS_POOL), notable: true };
+  const cChance = npc.roleId in CLASS_CHANCE ? CLASS_CHANCE[npc.roleId] : CLASS_CHANCE_DEFAULT;
+  if (!chance(cChance)) return { clsId: "level0", notable: false };
+  const clsId = weighted(ROLE_CLASS[npc.roleId] || [["roustabout", 1]]);
+  return { clsId, notable: RARE_CLASSES.includes(clsId) };
+}
+
 export function buildSheet(npc, s) {
   const lv = npc.lv, anc = SD_ANCESTRY[npc.anc] || SD_ANCESTRY.human;
-  const clsId = lv === 0 ? "level0" : weighted(ROLE_CLASS[npc.roleId] || [["roustabout", 1]]);
-  const cls = SD_CLASSES[clsId];
+  const { clsId, notable } = pickClass(npc);
+  // classless but leveled (a tough dock enforcer, a dangerous-tier smuggler with no formal training)
+  // still scales HP off their own job's hit die — no talents, no features, no class-weapon lock.
+  const cls = clsId === "level0" && lv > 0 ? { ...SD_CLASSES.level0, hd: npc.arch.hd } : SD_CLASSES[clsId];
+  const patronKey = clsId === "warlock" ? pick(Object.keys(WARLOCK_PATRONS)) : null;
   const scores = Object.fromEntries(SD_STATS.map((k) => [k, scoreFor(npc.mods[k])]));
   const talents = [];
   let atk = 0, acBonus = 0, cast = 0, backstab = 0, extraHpDice = 0, extraSpells = 0, masteryN = 1, advSpell = 0;
@@ -19,7 +38,7 @@ export function buildSheet(npc, s) {
     const roll = () => d(6) + d(6);
     let r = roll();
     if (npc.anc === "halfelf") { const r2 = roll(); if (Math.abs(r2 - 7) > Math.abs(r - 7)) r = r2; } // Adaptable: keep the more interesting
-    const [txt, e] = cls.talent(r);
+    const [txt, e] = cls.talent(r, { patronKey });
     let line = txt;
     if (e.stat) line = txt.replace("{stat}", bump(e.stat, e.amt));
     if (e.two) { const a = bump(SD_STATS, 1); let b = pick(SD_STATS.filter((k) => k !== a)); scores[b] = Math.min(18, scores[b] + 1); line = `+1 to ${a} and ${b}`; }
@@ -129,15 +148,19 @@ export function buildSheet(npc, s) {
   if (anc.extra) addFrom(COMMON_LANGS, anc.extra);
   if (cls.commonLang) addFrom(COMMON_LANGS, cls.commonLang);
   if (cls.rareLang) addFrom(clsId === "warlock" ? [...RARE_LANGS, "Sylvan"] : clsId === "priest" ? ["Celestial", "Diabolic", "Primordial"] : RARE_LANGS, cls.rareLang);
+  if (cls.fixedLangs) cls.fixedLangs.forEach((l) => { if (!langs.includes(l)) langs.push(l); });
 
   // Elf Farsight: +1 ranged if they carry a ranged weapon, otherwise +1 to spellcasting
   if (npc.anc === "elf" && cls.cast && !weapons.some(([w]) => SD_WEAPONS[w].type === "R")) cast += 1;
   const titleRow = TITLES[clsId] && TITLES[clsId][npc.al];
   const title = titleRow ? titleRow[Math.min(4, Math.floor((lv - 1) / 2))] : "";
-  const bg = ROLE_BG_FIXED[npc.roleId] || pick(ROLE_BACKGROUND[npc.arch.cat] || ROLE_BACKGROUND.labor);
+  // a warlock, witch, or Knight of St. Ydris carries a background from what shaped them, not their day job
+  const bg = notable ? pick(DIABOLICAL_BG) : (ROLE_BG_FIXED[npc.roleId] || pick(ROLE_BACKGROUND[npc.arch.cat] || ROLE_BACKGROUND.labor));
   const deity = npc.faith ? npc.faith.name : "";
+  const patron = patronKey ? WARLOCK_PATRONS[patronKey].n : "";
   const fill = (t) => t.replace("{mastery}", mastery.map((w) => SD_WEAPONS[w].n).join(", ") || "their weapon")
     .replace("{grit}", mods.STR >= mods.DEX ? "Strength" : "Dexterity").replace("{deity}", deity || "their god")
+    .replace("{patron}", patron || "their patron")
     .replace("{backstab}", String(1 + Math.floor(lv / 2) + backstab)).replace("{spell}", advOn || "one spell");
   const features = [
     { n: anc.trait[0], t: anc.trait[1], src: "Ancestry" },
@@ -147,7 +170,7 @@ export function buildSheet(npc, s) {
   if (cast) features.push({ n: "Spellcasting bonus", t: `+${cast} to spellcasting checks (included below).`, src: "Talents" });
 
   return {
-    clsId, cls: cls.n, src: cls.src || "Core", title, background: bg, deity, xp: lv === 0 ? d(4) : Math.floor(RNG() * lv * 10), xpNext: Math.max(1, lv) * 10,
+    clsId, cls: cls.n, src: cls.src || "Core", title, background: bg, deity, patron, notable, xp: lv === 0 ? d(4) : Math.floor(RNG() * lv * 10), xpNext: Math.max(1, lv) * 10,
     scores, hp, hpNow: hp, ac, armor: armorId, shield, attacks, features, spells, castStat: cls.cast || null, castBonus: cast,
     langs, gear, free, wallet, saved: wb.saved,
     slots: cap,

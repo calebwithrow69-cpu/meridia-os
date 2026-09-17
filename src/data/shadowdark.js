@@ -1,6 +1,8 @@
-import { RNG, clamp, d } from "../lib/rng.js";
+import { RNG, clamp, d, pick, chance } from "../lib/rng.js";
+// `chance` and `pick` were used by the wizard talent table below but never imported — latent bug, fixed here.
 
-export const ancLabel = { human: "Human", dwarf: "Dwarf", elf: "Elf", halfling: "Halfling", halforc: "Half-orc", halfelf: "Half-elf", goblin: "Goblin", kobold: "Kobold" };
+export const ancLabel = { human: "Human", dwarf: "Dwarf", elf: "Elf", halfling: "Halfling", halforc: "Half-orc", halfelf: "Half-elf", goblin: "Goblin" };
+// kobold dropped from pickable ancestries — no mechanical trait exists in any reference file (only an unattached population-table roll). SD_ANCESTRY.kobold below is kept as a dormant stub for when real source text turns up.
 
 export const alLabel = { L: "Lawful", N: "Neutral", C: "Chaotic" };
 
@@ -109,6 +111,16 @@ export const TITLES = {
   priest: { L: ["Acolyte", "Crusader", "Templar", "Champion", "Paladin"], C: ["Initiate", "Zealot", "Cultist", "Scourge", "Chaos Knight"], N: ["Seeker", "Invoker", "Haruspex", "Mystic", "Oracle"] },
   thief: { L: ["Footpad", "Burglar", "Rook", "Underboss", "Boss"], C: ["Thug", "Cutthroat", "Shadow", "Assassin", "Wraith"], N: ["Robber", "Outlaw", "Rogue", "Renegade", "Bandit King/Queen"] },
   wizard: { L: ["Apprentice", "Conjurer", "Arcanist", "Mage", "Archmage"], C: ["Adept", "Channeler", "Witch/Warlock", "Diabolist", "Sorcerer"], N: ["Shaman", "Seer", "Warden", "Sage", "Druid"] },
+  // Cursed Scroll 1 titles
+  warlock: { L: ["Favored", "Herald", "Eminent", "Exalted", "Incarnation"], C: ["Marked", "Zealot", "Occultist", "Champion", "Harbinger"], N: ["Chosen", "Channeler", "Prophesied", "Transcendent", "Avatar"] },
+  witch: { L: ["Fortune Teller", "Far Seer", "Prophet", "Wise One", "Baba"], C: ["Whisperer", "Hexer", "Hag/Elder", "Crone/Uncle", "Baba"], N: ["Shaman", "Conjurer", "Soothsayer", "Conduit", "Baba"] },
+  knightydris: { L: ["Arbiter", "Enforcer", "Knight Marshal", "Judge", "Justiciar"], C: ["Traitor", "Fallen", "Oathbreaker", "Blackguard", "Demonlord"], N: ["Brother/Sister", "Exorcist", "Reverend Knight", "Inquisitor", "Grand Inquisitor"] },
+  // Bard and Ranger Classes
+  bard: { L: ["Storyteller", "Balladeer", "Philosopher", "Poet", "Master Poet"], C: ["Guttersnipe", "Charlatan", "Satirist", "Silvertongue", "Doomspeaker"], N: ["Seeker", "Witness", "Speaker", "Voice", "Truthbearer"] },
+  ranger: { L: ["Wanderer", "Strider", "Warden", "Guardian", "Sentinel"], C: ["Hood", "Outlaw", "Fugitive", "Exile", "Pariah"], N: ["Stranger", "Wayfarer", "Outlander", "Recluse", "Hermit"] },
+  // Cursed Scroll 6 — the book leaves some early Lawful/Chaotic cells blank; those fall back to "Duelist".
+  // At 9-10 the book offers three flavor variants per alignment (e.g. Swordmaster/Mongoose/Wolf); "Swordmaster" is used for all three to keep one title per level.
+  duelist: { L: ["Duelist", "Fencer", "Duelist", "Defender", "Swordmaster"], C: ["Duelist", "Ruffian", "Duelist", "Heckler", "Swordmaster"], N: ["Student", "Challenger", "Mouser", "Panther", "Swordmaster"] },
 };
 
 
@@ -132,6 +144,53 @@ export const WIZARD_SPELLS = [
 export const PRIEST_KNOWN = [[2], [3], [3, 1], [3, 2], [3, 2, 1], [3, 2, 2], [3, 3, 2, 1], [3, 3, 2, 2], [3, 3, 2, 2, 1], [3, 3, 3, 2, 2]];
 
 export const WIZARD_KNOWN = [[3], [4], [4, 1], [4, 2], [4, 2, 1], [4, 3, 2], [4, 3, 2, 1], [4, 4, 2, 2], [4, 4, 3, 2, 1], [4, 4, 4, 2, 2]]; // NOT IN REFS — from memory of the core book; check
+
+// Witch — Cursed Scroll 1
+export const WITCH_SPELLS = [
+  ["Cauldron", "Charm Person", "Eyebite", "Fog", "Hypnotize", "Oak, Ash, Thorn", "Puppet", "Shadowdance", "Willowman", "Witchlight"],
+  ["Alter Self", "Augury", "Bogboil", "Cacklerot", "Cat's Eye", "Frog Rain", "Invisibility", "Poison", "Spidersilk", "Toadstool"],
+  ["Broomstick", "Coven", "Divination", "Howl", "Mistletoe", "Pin Doll", "Speak With Dead", "Swarm", "Void Stare", "Whisper"],
+  ["Beguile", "Cloak of Night", "Curse", "Dimension Door", "Glassbones", "Moonbeam", "Nightmare", "Polymorph"],
+  ["Anathema", "Dreamwalk", "Enfeeble", "Finger of Death", "Mother of Night", "Scrying", "Shapechange", "Soul Jar"],
+];
+export const WITCH_KNOWN = [[3], [4], [4, 1], [4, 2], [4, 2, 1], [4, 3, 2], [4, 3, 2, 1], [4, 4, 2, 2], [4, 4, 3, 2, 1], [4, 4, 4, 2, 2]];
+
+// Knight of St. Ydris casts from the witch spell list too, but on a slower table — Cursed Scroll 1
+export const YDRIS_KNOWN = [[], [], [1], [2], [3], [3, 1], [3, 2], [3, 3], [3, 3, 1], [3, 3, 2]];
+
+// Warlock patrons — Cursed Scroll 1. Each boon(r) mirrors the book's own 2d6 Patron Boon table.
+// Effects only wire into the sheet where the book gives a clean number (a stat bump, an attack bonus, an AC bonus);
+// the rest (teleports, mind-reading, morale forcing, immunities) are read off the sheet as flavor, same as the
+// existing thief/roustabout talents that already carry effect keys (e.g. `init`) with no numeric hookup.
+export const WARLOCK_PATRONS = {
+  almazzat: {
+    n: "Almazzat", desc: "A wolf-headed arch-demon with six eyes and six horns, who seeks to wrest the Sands of the Ages from his father, Kytheros.",
+    boon: (r) => r === 2 ? ["1/day, advantage on melee attacks for 3 rounds", {}] : r <= 7 ? ["Learn to wield one melee weapon, or +1 to melee attacks", { atk: 1 }] : r <= 9 ? ["+2 to {stat} (or +1 to melee damage)", { stat: ["STR", "CON"], amt: 2 }] : r <= 11 ? ["Advantage on initiative rolls", {}] : ["Choose one option, or +2 stat points", { pick: 1 }],
+  },
+  kytheros: {
+    n: "Kytheros", desc: "The Lord of Time, who sees all possible futures and seeks the fulfillment of all destinies as they were meant to be.",
+    boon: (r) => r === 2 ? ["1/day, force the GM to reroll a single roll", {}] : r <= 7 ? ["+1 AC through supernatural foresight", { ac: 1 }] : r <= 9 ? ["+2 to {stat}", { stat: ["STR", "DEX", "WIS"], amt: 2 }] : r <= 11 ? ["3/day, add your WIS bonus to any roll", {}] : ["Choose one option, or +2 stat points", { pick: 1 }],
+  },
+  shune: {
+    n: "Shune the Vile", desc: "A goddess, the Mother Witch, who speaks to her children in the flicker of candles and the rattle of dry bones. She seeks hidden secrets and lost lore.",
+    boon: (r) => r === 2 ? ["1/day, read the mind of a creature you touch for 3 rounds", {}] : r <= 7 ? ["Learn a wizard spell, tier = half your level, cast with INT", { spell: 1 }] : r <= 9 ? ["+2 to {stat}", { stat: ["DEX", "INT"], amt: 2 }] : r <= 11 ? ["+1 XP whenever you learn a valuable or significant secret", {}] : ["Choose one option, or +2 stat points", { pick: 1 }],
+  },
+  willowman: {
+    n: "The Willowman", desc: "A ghostly, elongated being who stalks misty forests and watches from the edge of nightmares. It seeks fear.",
+    boon: (r) => r === 2 ? ["1/day, teleport to a far location you see, as your move", {}] : r <= 7 ? ["+1 to melee or ranged attacks", { atk: 1 }] : r <= 9 ? ["+2 to {stat}", { stat: ["STR", "DEX"], amt: 2 }] : r <= 11 ? ["1/day, force a close being to check morale, even if immune", {}] : ["Choose one option, or +2 stat points", { pick: 1 }],
+  },
+  mugdulblub: {
+    n: "Mugdulblub", desc: "The Elder Ooze that leaks between the cracks in memory and the darkness between the stars. It seeks the dissolution of all physical form.",
+    boon: (r) => r === 2 ? ["1/day, turn into a crawling puddle of slime for 3 rounds", {}] : r <= 7 ? ["Maximize two hit point die rolls (prior or future)", {}] : r <= 9 ? ["+2 to {stat}", { stat: ["DEX", "CON"], amt: 2 }] : r <= 11 ? ["Immune to one of: acid, cold, poison", {}] : ["Choose one option, or +2 stat points", { pick: 1 }],
+  },
+  titania: {
+    n: "Titania", desc: "The fickle Queen of the Fey, who views all existence as a whimsical dream with hidden meaning. She seeks mischief, beauty, and artistry.",
+    boon: (r) => r === 2 ? ["1/day, hypnotize a LV 5 or less creature for 3 rounds", {}] : r <= 7 ? ["Learn to wield a longbow, or +1 to ranged attacks", { atk: 1 }] : r <= 9 ? ["+2 to {stat}", { stat: ["DEX", "CHA"], amt: 2 }] : r <= 11 ? ["Hostile spells that target you are always hard to cast", {}] : ["Choose one option, or +2 stat points", { pick: 1 }],
+  },
+};
+
+// Diabolical Backgrounds — Cursed Scroll 1, shared by Warlock/Witch/Knight of St. Ydris
+export const DIABOLICAL_BG = ["Hermit", "Outcast", "Woodborn", "Amnesiac", "Haunted", "Fugitive", "Feytouched", "Witchborn", "Forager", "Redeemer", "Marked", "Sacrifice", "Marooned", "Fallen", "Drawn", "Ascetic", "Wolfchild", "Healer", "Chosen", "Demonborn"];
 
 /* Classes. `talent(r)` returns [text, effect] for a 2d6 roll.
    effect: {stat:[choices], amt} | {atk:1} | {ac:1} | {cast:1} | {backstab:1} | {mastery:1} | {extraHp:1} | {spell:1} | {pick:1} | {two:1} */
@@ -167,29 +226,88 @@ export const SD_CLASSES = {
     features: [["Knowaguy", "Advantage on checks to deal with commoners and source favours."], ["Lucksmith", "When someone else uses their luck token, that roll has advantage."], ["Surprising Guts", "At half HP or lower, advantage on their next roll."]],
     talent: (r) => r === 2 ? ["+1 to {stat} and another talent", { stat: SD_STATS, amt: 1, again: 1 }] : r <= 6 ? ["Can wield one more weapon or armour", { prof: 1 }] : r <= 9 ? ["+1 to {stat}", { two: 1 }] : r <= 11 ? ["An extra hit die this level", { extraHp: 1 }] : ["Knows one spell: {spell}", { spell: 1 }],
   },
+  // replaces the old "Western Reaches" Warlock, whose talent table pointed to a Player's Guide boon
+  // table that was never actually transcribed anywhere in this codebase. This version (Cursed Scroll 1)
+  // is fully specified: six named patrons, each with its own complete boon table.
   warlock: {
-    n: "Warlock", hd: 6, weapons: ["club", "crossbow", "dagger", "mace", "longsword"], armor: ["leather", "chainmail"], shield: true, src: "Western Reaches", rareLang: 1,
-    features: [["Patron", "Serves {deity}, who can grant or withhold its gifts."], ["Patron Boon", "One boon at 1st level — roll on the Player's Guide boon table (p. 72)."]],
-    talent: (r) => r === 2 ? ["A Patron Boon from any patron (roll, p. 72)", { boon: 1 }] : r <= 6 ? ["+1 to {stat}", { two: 1 }] : r <= 9 ? ["+1 to melee and ranged attacks", { atk: 1 }] : r <= 11 ? ["Roll two Patron Boons, keep one (p. 72)", { boon: 1 }] : ["+2 stat points", { pick: 1 }],
+    n: "Warlock", hd: 6, weapons: ["club", "crossbow", "dagger", "mace", "longsword"], armor: ["leather", "chainmail"], shield: true, src: "Cursed Scroll 1", rareLang: 1,
+    features: [["Patron", "Serves {patron}, who can grant or withhold its gifts."], ["Patron Boon", "Gained a random Patron Boon from {patron} at 1st level."]],
+    talent: (r, ctx) => {
+      const patronKey = (ctx && ctx.patronKey) || pick(Object.keys(WARLOCK_PATRONS));
+      const rollBoon = (key) => WARLOCK_PATRONS[key].boon(d(6) + d(6));
+      if (r === 2) return rollBoon(pick(Object.keys(WARLOCK_PATRONS))); // "an unexplained gift" from any patron
+      if (r <= 6) return ["+1 point to two different stats", { two: 1 }];
+      if (r <= 9) return ["+1 to melee and ranged attacks", { atk: 1 }];
+      if (r <= 11) return pick([rollBoon(patronKey), rollBoon(patronKey)]); // roll two, keep one
+      return ["Choose a talent, or +2 points to distribute to stats", { pick: 1 }];
+    },
+  },
+  witch: {
+    n: "Witch", hd: 4, weapons: ["dagger", "staff"], armor: ["leather"], shield: false, src: "Cursed Scroll 1", cast: "CHA", spells: WITCH_SPELLS, known: WITCH_KNOWN, fixedLangs: ["Diabolic", "Primordial", "Sylvan"],
+    features: [["Familiar", "A small animal (raven, rat, frog) that speaks Common and can be the source of the witch's spells. If it dies, it's restored by permanently sacrificing 1d4 HP."], ["Spellcasting", "CHA-based. Spell DC = 10 + tier."]],
+    talent: (r) => r === 2 ? ["1/day, teleport to your familiar's location as a move", {}] : r <= 7 ? ["+2 to CHA, or +1 to witch spellcasting checks", { cast: 1 }] : r <= 9 ? ["Advantage when casting {spell}", { advSpell: 1 }] : r <= 11 ? ["Learn an additional witch spell of any tier you can cast", { spell: 1 }] : ["Choose a talent, or +2 points to distribute to stats", { pick: 1 }],
+  },
+  knightydris: {
+    n: "Knight of St. Ydris", hd: 6, weapons: null, armor: ["leather", "chainmail", "plate"], shield: true, src: "Cursed Scroll 1", cast: "CHA", spells: WITCH_SPELLS, known: YDRIS_KNOWN, fixedLangs: ["Diabolic"],
+    features: [["Demonic Possession", "3/day, +1 to damage rolls for 3 rounds, plus half level (round down)."], ["Spellcasting", "Casts witch spells with CHA. Spell DC = 10 + tier. A natural 1 risks a Diabolical Mishap."]],
+    talent: (r) => r === 2 ? ["Demonic Possession bonus increases by 1 point", {}] : r <= 6 ? ["+1 to melee or ranged attacks", { atk: 1 }] : r <= 9 ? ["+2 to {stat}", { stat: ["STR", "DEX", "CON"], amt: 2 }] : r <= 11 ? ["+2 to CHA, or +1 to witch spellcasting checks", { cast: 1 }] : ["Choose a talent, or +2 points to distribute to stats", { pick: 1 }],
+  },
+  bard: {
+    n: "Bard", hd: 6, weapons: ["crossbow", "dagger", "mace", "shortbow", "shortsword", "spear", "staff"], armor: ["leather", "chainmail"], shield: true, src: "Bard and Ranger", commonLang: 4, rareLang: 1,
+    features: [["Bardic Arts", "Trained in oration, performing arts, lore, and diplomacy. Advantage on related checks."], ["Magical Dabbler", "Activates spell scrolls and wands using CHA. A critical failure means rolling a wizard mishap."], ["Presence", "DC 12 CHA check to Inspire (one target within near gains a luck token) or Fascinate (Focus; transfixes LV4-or-less targets within near)."], ["Prolific", "+1d6 to learning rolls. A group carousing with them adds +1d6 to its rolls too."]],
+    talent: (r) => r === 2 ? ["Finds a random priest or wizard wand", {}] : r <= 6 ? ["+1 to melee and ranged attacks, or +1 to Magical Dabbler rolls", { atk: 1 }] : r <= 9 ? ["+2 points to distribute to any stats", { pick: 1 }] : r <= 11 ? ["Presence effects become DC 9 to enact", {}] : ["Choose a talent", { again: 1 }],
+  },
+  ranger: {
+    n: "Ranger", hd: 8, weapons: ["dagger", "longbow", "longsword", "shortbow", "shortsword", "spear", "staff"], armor: ["leather", "chainmail"], shield: false, src: "Bard and Ranger",
+    features: [["Wayfinder", "Advantage on checks for navigation, tracking, bushcraft, stealth, and wild animals."], ["Herbalism", "INT check to prepare an herbal remedy: DC 11 salve (heals 1 HP), DC 12 stimulant (can't be surprised for 10 rounds), DC 13 foebane (advantage vs. one creature type for 1d6 rounds), DC 14 restorative (ends a poison or disease), DC 15 curative (as a Potion of Healing). Unused remedies expire in 3 rounds."]],
+    talent: (r) => r === 2 ? ["Deals d12 damage with one weapon type of their choice", {}] : r <= 6 ? ["+1 to melee or ranged attacks and damage", { atk: 1 }] : r <= 9 ? ["+2 to {stat}", { stat: ["STR", "DEX", "INT"], amt: 2 }] : r <= 11 ? ["Advantage on Herbalism checks for one remedy", {}] : ["Choose a talent, or +2 points to distribute to stats", { pick: 1 }],
+  },
+  duelist: {
+    n: "Duelist", hd: 8, weapons: ["dagger", "bastard", "greatsword", "longsword", "scimitar", "shortsword"], armor: ["leather", "chainmail"], shield: false, src: "Cursed Scroll 6",
+    features: [["Parry", "Once per day, an attack that would hit them misses instead."], ["Tale Spinner", "DC 15 CHA check: strangers believe they're famous and important for the rest of the interaction. The same person can't be fooled twice."], ["Taunt", "When an enemy misses them with an attack, advantage on attacks against that enemy next round."]],
+    talent: (r) => r === 2 ? ["1/day, all attacks that would hit them this round miss instead", {}] : r <= 6 ? ["+1 to melee attacks and damage, or +1 Parry use per day", { atk: 1 }] : r <= 9 ? ["+2 to {stat}", { stat: ["STR", "DEX", "CHA"], amt: 2 }] : r <= 11 ? ["+1d6 damage when they hit with a Taunt attack", {}] : ["Choose a talent, or +2 points to distribute to stats", { pick: 1 }],
   },
 };
 
-// which class each job trains into (only used from LV1 up)
+// Which class an NPC gets IF they have one at all (see CLASS_CHANCE below — most jobs are ordinary
+// vocations, not classes). Only used from LV1 up; LV0 and CLASS_CHANCE failures use the level0 chassis.
+// Knight of St. Ydris never appears here — it's a secret cursed order, not a career, so it's only
+// reachable through the RARE_CLASS_POOL overlay below, independent of job.
 
 export const ROLE_CLASS = {
   laborer: [["roustabout", 9], ["fighter", 1]], beggar: [["roustabout", 1]], child: [["roustabout", 1]], drunk: [["roustabout", 8], ["fighter", 2]],
-  rower: [["roustabout", 7], ["fighter", 3]], sailor: [["fighter", 5], ["roustabout", 4], ["thief", 1]], servant: [["roustabout", 1]],
+  rower: [["roustabout", 7], ["fighter", 3], ["ranger", 1]], sailor: [["fighter", 5], ["roustabout", 4], ["thief", 1], ["ranger", 1]], servant: [["roustabout", 1]],
   vendor: [["roustabout", 1]], artisan: [["roustabout", 1]], merchant: [["roustabout", 7], ["thief", 3]], innkeep: [["roustabout", 7], ["fighter", 3]],
   gambler: [["thief", 6], ["roustabout", 4]], informant: [["thief", 7], ["roustabout", 3]], cutpurse: [["thief", 1]], thief: [["thief", 1]],
-  fence: [["thief", 8], ["roustabout", 2]], smuggler: [["thief", 6], ["fighter", 4]], thug: [["fighter", 7], ["thief", 3]], masked: [["thief", 5], ["wizard", 3], ["warlock", 2]],
+  fence: [["thief", 8], ["roustabout", 2]], smuggler: [["thief", 6], ["fighter", 4]], thug: [["fighter", 7], ["thief", 3]], masked: [["thief", 4], ["warlock", 3], ["wizard", 2], ["witch", 1]],
   assassin: [["thief", 1]], guard: [["fighter", 1]], sergeant: [["fighter", 1]], knight: [["fighter", 1]], spy: [["thief", 8], ["wizard", 2]],
-  duelist: [["fighter", 7], ["thief", 3]], gladiator: [["fighter", 1]], bard: [["roustabout", 5], ["wizard", 3], ["thief", 2]], actor: [["roustabout", 7], ["thief", 3]],
+  duelist: [["duelist", 7], ["fighter", 2], ["thief", 1]], gladiator: [["fighter", 1]], bard: [["bard", 6], ["roustabout", 2], ["wizard", 1], ["thief", 1]], actor: [["roustabout", 6], ["bard", 2], ["thief", 2]],
   apprentice: [["wizard", 1]], mage: [["wizard", 1]], scholar: [["wizard", 5], ["roustabout", 5]], clerk: [["roustabout", 1]], barrister: [["roustabout", 8], ["wizard", 2]],
   acolyte: [["priest", 1]], priest: [["priest", 1]], cultist: [["warlock", 6], ["priest", 4]], charnelman: [["priest", 8], ["fighter", 2]],
-  mourner: [["roustabout", 7], ["priest", 3]], pilgrim: [["priest", 5], ["roustabout", 5]], physician: [["roustabout", 6], ["priest", 4]],
-  apothecary: [["roustabout", 6], ["wizard", 4]], fortuneteller: [["roustabout", 5], ["wizard", 3], ["warlock", 2]], noble: [["fighter", 5], ["roustabout", 3], ["wizard", 2]],
+  mourner: [["roustabout", 7], ["priest", 3]], pilgrim: [["priest", 4], ["roustabout", 5], ["ranger", 1]], physician: [["roustabout", 6], ["priest", 4]],
+  apothecary: [["roustabout", 6], ["wizard", 3], ["witch", 1]], fortuneteller: [["witch", 4], ["roustabout", 3], ["wizard", 2], ["warlock", 1]], noble: [["fighter", 4], ["roustabout", 3], ["wizard", 2], ["duelist", 1]],
   druid: [["priest", 7], ["wizard", 3]],
 };
+
+// Chance (0-1) that an NPC in this job has ANY Shadowdark class at all. Most professions are just
+// professions — a shopkeeper, a servant, a scholar aren't secretly Fighters because the game needs a
+// stat block. A class means real training in violence or magic. Children and LV0 never roll here.
+export const CLASS_CHANCE = {
+  laborer: 0.04, beggar: 0.02, child: 0, drunk: 0.05, rower: 0.07, sailor: 0.12, servant: 0.03,
+  vendor: 0.04, artisan: 0.05, merchant: 0.08, innkeep: 0.08, gambler: 0.15, informant: 0.2,
+  cutpurse: 0.3, thief: 0.55, fence: 0.25, smuggler: 0.3, thug: 0.45, masked: 0.85, assassin: 0.95,
+  guard: 0.85, sergeant: 0.95, knight: 0.95, spy: 0.85, duelist: 0.85, gladiator: 0.8, bard: 0.5,
+  actor: 0.12, apprentice: 0.8, mage: 0.95, scholar: 0.15, clerk: 0.03, barrister: 0.1, acolyte: 0.55,
+  priest: 0.95, cultist: 0.55, charnelman: 0.35, mourner: 0.04, pilgrim: 0.08, physician: 0.1,
+  apothecary: 0.1, fortuneteller: 0.3, noble: 0.2, druid: 0.85,
+};
+export const CLASS_CHANCE_DEFAULT = 0.05;
+
+// The secret-class overlay: independent of job, a tiny fraction of ANY LV1+ adult could be hiding one
+// of these. This is what makes "someone interesting" possible under any mask — a shopkeeper, a guard,
+// a beggar. Checked before the job-based roll above; if it hits, it overrides the job's usual class.
+export const RARE_CLASS_CHANCE = 0.005;
+export const RARE_CLASS_POOL = [["warlock", 5], ["witch", 4], ["knightydris", 1]];
 
 // Shadowdark core d20 backgrounds — NOT IN REFS (list from the core book); check
 

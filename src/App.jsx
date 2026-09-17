@@ -1578,6 +1578,7 @@ export default function MeridiaOS() {
           <div style={{ fontFamily: MONO, color: C.cyan, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase" }}>
             {n.role}, level {n.lv}{n.sd && n.sd.clsId !== "level0" ? ` ${n.sd.cls.toLowerCase()}` : ""} · {alLabel[n.al]} {ancLabel[n.anc].toLowerCase()} · {BAND_LABEL[n.band].toLowerCase()}{n.seenAt ? ` · at ${n.seenAt.name}` : ""}</div>
           <div className="mt-2 flex flex-wrap gap-2">
+            {n.sd && n.sd.notable && <span className="px-2 py-1 mos-flicker" style={{ border: `1px solid ${C.violet}`, color: C.violet, fontSize: 10, fontFamily: MONO, textShadow: glow(C.violet, 6) }}>⚠ NOT WHAT THEY SEEM</span>}
             <span className="px-2 py-1" style={{ border: `1px solid ${n.fac.color}`, color: n.fac.color, fontSize: 10, fontFamily: MONO }}>{n.fac.label}</span>
             <span className="px-2 py-1" style={{ border: `1px solid ${C.line}`, color: C.dim, fontSize: 10, fontFamily: MONO }}>RENOWN {fmt(n.renown)}</span>
             {show.record && <span className="px-2 py-1" style={{ border: `1px solid ${n.record.tone}`, color: n.record.tone, fontSize: 10, fontFamily: MONO }}>{n.record.state.label.toUpperCase()}</span>}

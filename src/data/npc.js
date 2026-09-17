@@ -775,7 +775,8 @@ export const OPENER_FRAME = [
 
 export const ANCESTRY_WEIGHTS_WR = [
   ["human", 54], ["elf", 10], ["dwarf", 10], ["halfling", 10],
-  ["goblin", 5], ["halfelf", 5], ["halforc", 5], ["kobold", 1],
+  ["goblin", 5], ["halfelf", 5], ["halforc", 5],
+  // kobold dropped — no mechanical trait exists in any reference file, only an unattached population-table roll
 ];
 
 /* Half-elf names use the book's two-part d10 construction. */
@@ -1266,6 +1267,7 @@ export const TEMPLATES = [
   { id: "crowdfolk", name: "Tavern staff", blurb: "Whoever's working the room", p: { jobs: ["innkeep", "servant", "drunk", "gambler", "bard", "informant"], mundane: true }, t: ON("open", "stats", "physical", "voice", "rumor", "sit") },
   { id: "street", name: "Street folk", blurb: "Beggars, children, labourers", p: { jobs: ["beggar", "child", "laborer", "rower", "drunk", "mourner"], record: "light" }, t: ON("open", "stats", "physical", "voice", "rumor", "sit", "life") },
   { id: "market", name: "Market trader", blurb: "Stalls, stock, thin margins", p: { jobs: ["vendor", "artisan", "merchant", "fortuneteller", "smuggler"] }, t: ON("open", "shop", "stats", "physical", "voice", "rumor", "sit") },
+  { id: "duelist", name: "Duelist", blurb: "Steel and reputation, City of Masks style", p: { job: "duelist" }, t: { ...T_ON, shop: false } },
   { id: "muscle", name: "Guild muscle", blurb: "House of Seren, on the job", p: { cat: "crime", faction: "guild", tier: "pro", record: "likely" }, t: { ...T_ON, shop: false } },
   { id: "guard", name: "City Guard", blurb: "The Duke's law, on or off duty", p: { faction: "duke", cat: "martial" }, t: { ...T_ON, shop: false } },
   { id: "court", name: "Court & nobility", blurb: "Renown, silk, obligations", p: { cat: "noble", band: "4" }, t: { ...T_ON, shop: false } },
