@@ -33,6 +33,12 @@ import {
   pickMask, rollOrigin, rollFaith, generateNPC, hydrateBookNpc, muster, rollSecret,
   generateSeeded, randomSeed, diffNpc, applyEdits,
 } from "./logic/generator.js";
+import {
+  WATCHES, WORLD_DEFAULT, watchOf, timeOf, dayLabel, advanceWatch, setWatch, advanceDay,
+  setPartyAt, undo as undoWorld, canUndo, logByDay, logLine,
+} from "./logic/world.js";
+import { CityMap, MapLegend, tierTone } from "./ui/CityMap.jsx";
+import { MAP_PINS } from "./data/citymap.js";
 import { buildSheet, sdMods, gearSlotsUsed, walletText, hpState, rollDamage } from "./logic/sheet.js";
 import {
   Bracket, Panel, ConfirmBtn, Seg, Row, Stat, Select, Group, Toggle, Btn, Glyph, Search, hit,
@@ -169,6 +175,7 @@ export const EDIT_TAB = { IDENTITY: "identity", THREAT: "combat", "IN THE MOMENT
 
 export const APPS = [
   { id: "npcs", name: "NPCs", short: "NPCs", sub: "Generate, book, groups, saved", tone: "amber", glyph: "eye" },
+  { id: "map", name: "Map", short: "Map", sub: "The city itself — districts, sites, the party", tone: "cyan", glyph: "compass" },
   { id: "city", name: "Locations", short: "Locations", sub: "Fifty sites, eight districts", tone: "cyan", glyph: "map" },
   { id: "party", name: "Party", short: "Party", sub: "Your PCs and their renown", tone: "green", glyph: "shield" },
   { id: "config", name: "Config", short: "Config", sub: "Layout, modes, sound, taskbar, your data", tone: "dim", glyph: "gear" },
@@ -189,8 +196,8 @@ export const LEGACY_APP = { scan: "npcs", named: "npcs", muster: "npcs", archive
 // which apps sit on the taskbar in each mode — editable in Config
 
 export const MODE_APPS = {
-  prep: ["npcs", "city", "party", "config"],
-  play: ["npcs", "city", "party"],
+  prep: ["npcs", "map", "city", "party", "config"],
+  play: ["npcs", "map", "city", "party"],
 };
 
 export const ROSTER_CAP = 600; // ~5 KB each; 600 is about 3 MB of the 5 MB limit
@@ -232,7 +239,7 @@ export const CONFIG_PAGES = [
    Book lists (Shadowdark p.128, via the compilation) alternate f/m.
    Surnames are also built from two halves, so repeats are rare. */
 
-export const SUB_LABEL = Object.fromEntries([...NPC_PAGES, ...CONFIG_PAGES].map(([id, nm]) => [id, nm]));
+export const SUB_LABEL = { ...Object.fromEntries([...NPC_PAGES, ...CONFIG_PAGES].map(([id, nm]) => [id, nm])), time: "Day log" };
 
 export const BLOCK_KEYS_ALL = [...DEFAULT_ORDER, "disp", "canon_desc", "canon_wants", "canon_hook"];
 // friendly names for fields when global search finds a match inside a saved NPC
@@ -295,6 +302,9 @@ export default function MeridiaOS() {
   const [restoreDraft, setRestoreDraft] = useState("");
   const [saveState, setSaveState] = useState("ok");   // ok | blocked (couldn't read existing save) | failed (write refused)
   const [numDraft, setNumDraft] = useState({});       // half-typed numbers in edit mode ("-", "")
+  const [world, setWorld] = useState(WORLD_DEFAULT);  // THE SPINE — shared world state
+  const [mapSel, setMapSel] = useState({ district: null, loc: null });
+  const [dateDraft, setDateDraft] = useState("");
 
   const play = s.uiMode === "play";
   const musterN = s.musterN || 5;
@@ -369,6 +379,7 @@ export default function MeridiaOS() {
           if (v.groups) setGroups(v.groups);
           if (v.presets) setPresets(v.presets);
           if (v.pcs) setPcs(v.pcs);
+          if (v.world) setWorld({ ...WORLD_DEFAULT, ...v.world });
           if (v.settings) { const st = { ...DEFAULTS, ...v.settings }; setS(st); setFileTab(st.uiMode === "play" ? st.tabPlay : st.tabPrep); }
           if (v.show) setShow({ ...Object.fromEntries(DEFAULT_ORDER.map((k) => [k, true])), ...v.show });
           if (v.order && v.order.length === DEFAULT_ORDER.length) setOrder(v.order);
@@ -392,12 +403,19 @@ export default function MeridiaOS() {
     if (!loaded || saveState === "blocked") return;
     const t = setTimeout(async () => {
       try {
-        const r = await Storage.set(STORE_KEY, JSON.stringify({ roster: roster.map(compactForSave), groups, presets, pcs, settings: s, show, order }));
+        const r = await Storage.set(STORE_KEY, JSON.stringify({ roster: roster.map(compactForSave), groups, presets, pcs, settings: s, show, order, world }));
         setSaveState(r ? "ok" : "failed");
       } catch (e) { setSaveState("failed"); }
     }, 500); // typing in notes no longer rewrites the whole save on every keystroke
     return () => clearTimeout(t);
-  }, [roster, groups, presets, pcs, s, show, order, loaded, saveState]);
+  }, [roster, groups, presets, pcs, s, show, order, world, loaded, saveState]);
+
+  /* the spine drives day/night for generation while it's switched on, so advancing a watch
+     changes what the next stranger is doing */
+  useEffect(() => {
+    const t = timeOf(world);
+    if (t && t !== s.time) setS((p) => ({ ...p, time: t }));
+  }, [world.on, world.watch]);
 
   const set = (k, v) => setS((p) => {
     const n = { ...p, [k]: v };
@@ -509,6 +527,19 @@ export default function MeridiaOS() {
           {!r.fumble && <span style={{ color: C.blood }}>DMG {r.dmg.total}{r.dmg.dice.length ? ` [${r.dmg.dice.join("+")}${r.dmg.bonus ? fmt(r.dmg.bonus) : ""}]` : ""}</span>}
         </div>))}
     </div>) : null;
+  /* ---------------- the spine ---------------- */
+  const bumpWatch = () => { snd(SFX.toggle); setWorld((w) => advanceWatch(w)); };
+  const jumpWatch = (i) => { snd(SFX.toggle); setWorld((w) => setWatch(w, i)); };
+  const nextDay = () => { snd(SFX.open); setWorld((w) => advanceDay(w)); flash("A new day in Meridia"); };
+  const stepBack = () => { if (!canUndo(world)) return; snd(SFX.back); setWorld(undoWorld); flash("Time stepped back"); };
+  const noteToLog = (text) => setWorld((w) => logLine(w, text, "note"));
+  const placeParty = (n) => {
+    const l = locByN(n);
+    snd(SFX.save);
+    setWorld((w) => setPartyAt(w, n, l ? `${l.n}. ${l.name}` : `#${n}`));
+    flash(l ? `Party at ${l.name}` : "Party moved");
+  };
+
   const openNpc = (n) => { snd(SFX.tap); setNpc(roster.find((x) => x.id === n.id) || n); setShowText(false); setNumDraft({}); };
   const run = (override = {}, keep = {}) => {
     snd(SFX.scan);
@@ -1118,6 +1149,61 @@ export default function MeridiaOS() {
       </div>
     );
 
+    /* ---------- the spine's day log ---------- */
+    if (sub === "time") {
+      const days = logByDay(world);
+      const KIND = { day: C.gold, watch: C.cyan, party: C.green, undo: C.violet, note: C.text };
+      return (
+        <div>
+          <Bracket>
+            <div style={kicker(C.gold)}>THE DAY SO FAR</div>
+            <div className="flex items-baseline gap-2">
+              <span style={{ fontFamily: MONO, fontSize: 18, color: C.text }}>{dayLabel(world)}</span>
+              <span style={{ fontFamily: MONO, fontSize: 13, color: watchOf(world).night ? C.violet : C.gold, letterSpacing: "0.12em" }}>{watchOf(world).name.toUpperCase()}</span>
+            </div>
+            <div className="flex gap-2 mt-2">
+              <Btn tone={C.gold} color={C.gold} onClick={bumpWatch}>NEXT WATCH ›</Btn>
+              <Btn flex={false} color={canUndo(world) ? C.cyan : C.line} onClick={stepBack}>UNDO</Btn>
+            </div>
+            <div style={{ fontSize: 10, fontFamily: MONO, color: C.dim, marginTop: 6 }}>YOUR OWN DATE (OPTIONAL)</div>
+            <div className="flex gap-2 mt-1">
+              <input value={dateDraft} onChange={(e) => setDateDraft(e.target.value)} placeholder={world.dateLabel || "e.g. 3rd of Lastmoon"}
+                style={{ ...inputStyle, flex: 1, fontFamily: MONO, fontSize: 12 }} />
+              <Btn flex={false} onClick={() => { setWorld((w) => ({ ...w, dateLabel: dateDraft.trim() })); setDateDraft(""); flash(dateDraft.trim() ? "Date set" : "Back to day count"); }}>SET</Btn>
+            </div>
+            <div style={{ fontSize: 11, color: C.dim, marginTop: 6, lineHeight: 1.5 }}>
+              The books don't give Meridia a calendar of named months, so the spine counts days and leaves the naming to you.</div>
+          </Bracket>
+
+          <div className="mt-3"><Bracket>
+            <div style={kicker()}>ADD A LINE</div>
+            <div className="flex gap-2">
+              <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} placeholder="What just happened"
+                onKeyDown={(e) => { if (e.key === "Enter" && nameDraft.trim()) { noteToLog(nameDraft.trim()); setNameDraft(""); } }}
+                style={{ ...inputStyle, flex: 1, fontSize: 12 }} />
+              <Btn flex={false} tone={C.green} color={C.green} onClick={() => { if (nameDraft.trim()) { noteToLog(nameDraft.trim()); setNameDraft(""); flash("Logged"); } }}>LOG</Btn>
+            </div>
+          </Bracket></div>
+
+          <div className="mt-3">
+            {!days.length && <div style={{ fontSize: 12, color: C.dim, padding: "18px 2px" }}>Nothing logged yet. Advancing a watch writes a line here on its own.</div>}
+            {days.map((d) => (
+              <div key={d.day} className="mb-3">
+                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: C.gold, borderBottom: `1px solid ${C.line}`, paddingBottom: 3, marginBottom: 4 }}>
+                  DAY {d.day}{d.day === world.day ? " — TODAY" : ""}</div>
+                {d.entries.map((e) => (
+                  <div key={e.id} className="flex gap-2" style={{ padding: "3px 0", fontSize: 12, lineHeight: 1.45 }}>
+                    <span style={{ fontFamily: MONO, fontSize: 10, color: C.dim, minWidth: 74, paddingTop: 2 }}>{(WATCHES[e.watch] || WATCHES[0]).name}</span>
+                    <span style={{ color: KIND[e.kind] || C.text }}>{e.text}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     /* ---------- config sub-pages ---------- */
     if (sub === "presets") return (
       <Bracket>
@@ -1254,6 +1340,91 @@ export default function MeridiaOS() {
     /* ---------- apps ---------- */
     switch (app) {
       case "npcs": return npcTabBody(play && npcTab === "npcset" ? "scan" : npcTab);
+
+      /* ---------- MAP: the spine's clock sits on top, then districts and their sites ---------- */
+      case "map": {
+        const selLoc = mapSel.loc ? locByN(mapSel.loc) : null;
+        const cur = watchOf(world);
+        return (
+          <div>
+            <Bracket>
+              <div className="flex items-baseline justify-between">
+                <div style={kicker(C.gold)}>IN-WORLD TIME</div>
+                <span style={{ fontFamily: MONO, fontSize: 10, color: world.on ? C.green : C.dim }}>{world.on ? "RUNNING" : "OFF"}</span>
+              </div>
+              <div className="flex items-baseline gap-2" style={{ marginBottom: 6 }}>
+                <span style={{ fontFamily: MONO, fontSize: 18, color: C.text, letterSpacing: "0.04em" }}>{dayLabel(world)}</span>
+                <span style={{ fontFamily: MONO, fontSize: 13, color: cur.night ? C.violet : C.gold, letterSpacing: "0.12em" }}>{cur.name.toUpperCase()}</span>
+              </div>
+              <div className="flex flex-wrap gap-1" style={{ marginBottom: 6 }}>
+                {WATCHES.map((w, i) => (
+                  <button key={w.id} onClick={() => jumpWatch(i)} className="px-2 py-1"
+                    style={{ border: `1px solid ${i === world.watch ? (w.night ? C.violet : C.gold) : C.line}`,
+                      color: i === world.watch ? "#06090B" : C.dim, background: i === world.watch ? (w.night ? C.violet : C.gold) : "transparent",
+                      fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", borderRadius: 0, cursor: "pointer" }}>{w.name}</button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Btn tone={C.gold} color={C.gold} onClick={bumpWatch}>NEXT WATCH ›</Btn>
+                <Btn onClick={nextDay}>NEXT DAY</Btn>
+                <Btn flex={false} color={canUndo(world) ? C.cyan : C.line} onClick={stepBack}>UNDO</Btn>
+              </div>
+              <div className="flex gap-2 mt-2">
+                <Btn flex={false} onClick={() => openSub("time")}>DAY LOG ›</Btn>
+                <Btn flex={false} color={world.on ? C.dim : C.green} onClick={() => { snd(SFX.toggle); setWorld((w) => ({ ...w, on: !w.on })); }}>
+                  {world.on ? "SWITCH TIME OFF" : "SWITCH TIME ON"}</Btn>
+              </div>
+            </Bracket>
+
+            <div className="mt-3" />
+            {selLoc ? (
+              <Bracket>
+                <div className="flex items-baseline justify-between">
+                  <div style={kicker(tierTone(selLoc.d))}>{DISTRICTS[selLoc.d].name.toUpperCase()} · #{selLoc.n}</div>
+                  <button onClick={() => setMapSel({ district: selLoc.d, loc: null })}
+                    style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 12 }}>✕</button>
+                </div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: C.text, marginBottom: 2 }}>{selLoc.name}</div>
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {selLoc.k.map((k) => <span key={k} className="px-2" style={{ border: `1px solid ${C.cyan}`, color: C.cyan, fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase" }}>{k}</span>)}
+                </div>
+                <Row k="REFEREE NOTE" v={selLoc.note} />
+                {!!selLoc.p.length && <Row k="WHO'S HERE" v={selLoc.p.join(", ")} tone={C.gold} />}
+                <Row k="GUARD RESPONSE" v={DISTRICTS[selLoc.d].guard} />
+                <div className="flex gap-2 mt-2">
+                  <Btn tone={C.green} color={C.green} onClick={() => placeParty(selLoc.n)}>
+                    {world.partyAt === selLoc.n ? "PARTY IS HERE" : "PARTY HERE"}</Btn>
+                  <Btn tone={C.amber} color={C.amber} onClick={() => run({ seenAt: String(selLoc.n) })}>SCAN HERE</Btn>
+                </div>
+              </Bracket>
+            ) : (
+              <Bracket>
+                <div style={kicker()}>{mapSel.district ? DISTRICTS[mapSel.district].name.toUpperCase() : "EIGHT DISTRICTS"}</div>
+                {mapSel.district ? (
+                  <>
+                    <div style={{ fontFamily: MONO, fontSize: 11, color: C.dim, marginBottom: 6 }}>
+                      {DISTRICTS[mapSel.district].cat} · {DISTRICTS[mapSel.district].cls} · guard {DISTRICTS[mapSel.district].guard}</div>
+                    {LOCATIONS.filter((l) => l.d === mapSel.district).map((l) => (
+                      <ListBtn key={l.n} onClick={() => setMapSel({ district: l.d, loc: l.n })}
+                        title={`${l.n}. ${l.name}`} right={world.partyAt === l.n ? "PARTY" : ""} sub={l.k.join(" · ")} />
+                    ))}
+                    <div className="mt-2"><Btn onClick={() => setMapSel({ district: null, loc: null })}>ALL DISTRICTS</Btn></div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontFamily: MONO, fontSize: 11, color: C.dim, marginBottom: 6 }}>Tap the map, or a district here.</div>
+                    {Object.keys(DISTRICTS).map((dk) => (
+                      <ListBtn key={dk} onClick={() => setMapSel({ district: dk, loc: null })}
+                        title={DISTRICTS[dk].name} right={`${LOCATIONS.filter((l) => l.d === dk).length}`}
+                        sub={`${DISTRICTS[dk].cat} · ${DISTRICTS[dk].cls}`} />
+                    ))}
+                  </>
+                )}
+              </Bracket>
+            )}
+          </div>
+        );
+      }
       case "city": {
         const flat = !!q.city.trim();
         const locRow = (l) => (
@@ -1720,8 +1891,27 @@ export default function MeridiaOS() {
           <div key={`${app}/${sub}/${npcTab}/${gq ? "q" : ""}`} className="p-3" style={{ flex: 1, overflowY: "auto" }}>{leftBody()}</div>
         </aside>
 
-        {/* centre: the sheet */}
-        <main className="px-4 pb-4" style={{ flex: 1, minWidth: 0, overflowY: "auto" }}>{sheet()}</main>
+        {/* centre: the map when the Map app is open, otherwise the NPC sheet */}
+        <main className="px-4 pb-4" style={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
+          {app === "map" ? (
+            <div className="pt-3">
+              <div className="flex items-baseline gap-3 mb-2 flex-wrap">
+                <span style={{ fontFamily: MONO, fontSize: 12, color: C.cyan, letterSpacing: "0.12em" }}>MERIDIA — THE CITY OF MASKS</span>
+                <span style={{ fontFamily: MONO, fontSize: 11, color: C.dim }}>{dayLabel(world)} · {watchOf(world).name}</span>
+                {world.partyAt != null && locByN(world.partyAt) &&
+                  <span style={{ fontFamily: MONO, fontSize: 11, color: C.green }}>PARTY: {locByN(world.partyAt).name}</span>}
+                <span className="flex-1" />
+                <button onClick={bumpWatch} className="px-2 py-1" title="Advance one watch"
+                  style={{ border: `1px solid ${C.gold}`, color: C.gold, background: "transparent", fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", borderRadius: 0, cursor: "pointer" }}>NEXT WATCH ›</button>
+              </div>
+              <CityMap selDistrict={mapSel.district} selLoc={mapSel.loc} partyAt={world.partyAt}
+                night={watchOf(world).night && world.on}
+                onDistrict={(code) => { snd(SFX.tap); setMapSel({ district: code, loc: null }); }}
+                onLoc={(n) => { snd(SFX.tap); const l = locByN(n); setMapSel({ district: l ? l.d : null, loc: n }); }} />
+              <MapLegend night={watchOf(world).night && world.on} />
+            </div>
+          ) : sheet()}
+        </main>
 
         {/* right: party rail */}
         {play && s.partyRail && rail()}
@@ -1776,12 +1966,25 @@ export default function MeridiaOS() {
             style={{ border: `1px solid ${s.sound ? C.green : C.line}`, color: s.sound ? C.green : C.dim, background: "transparent", fontSize: 11, fontFamily: MONO, borderRadius: 0, cursor: "pointer" }}>{s.sound ? "♪" : "✕"}</button>
         </div>
 
-        {/* in-world time (placeholder until the Phase 1 calendar) and the real clock */}
-        <button onClick={() => { snd(SFX.toggle); set("time", s.time === "night" ? "day" : "night"); }} title="In-world time — click to flip day/night"
-          className="flex flex-col justify-center px-3 text-right" style={{ borderStyle: "solid", borderColor: C.line, borderWidth: "0 0 0 1px", background: "transparent", borderRadius: 0, cursor: "pointer" }}>
-          <span style={{ color: s.time === "night" ? C.violet : C.gold, fontSize: 12, fontFamily: MONO, letterSpacing: "0.1em" }}>{s.time === "night" ? "☾ NIGHT" : "☀ DAY"}</span>
-          <span style={{ color: C.dim, fontSize: 10, whiteSpace: "nowrap" }}>{hol.label}</span>
-        </button>
+        {/* in-world time — the spine. Tapping the label opens the day log; › advances a watch. */}
+        {world.on ? (
+          <div className="flex items-stretch" style={{ borderLeft: `1px solid ${C.line}` }}>
+            <button onClick={() => { snd(SFX.open); setApp("map"); setSub("time"); }} title="In-world time — open the day log"
+              className="flex flex-col justify-center px-3 text-right" style={{ border: "none", background: "transparent", borderRadius: 0, cursor: "pointer" }}>
+              <span style={{ color: watchOf(world).night ? C.violet : C.gold, fontSize: 12, fontFamily: MONO, letterSpacing: "0.1em", whiteSpace: "nowrap" }}>
+                {watchOf(world).night ? "☾" : "☀"} {watchOf(world).name.toUpperCase()}</span>
+              <span style={{ color: C.dim, fontSize: 10, whiteSpace: "nowrap" }}>{dayLabel(world)}{hol.label && hol.label !== "Ordinary day" ? ` · ${hol.label}` : ""}</span>
+            </button>
+            <button onClick={bumpWatch} title="Advance one watch"
+              className="px-2" style={{ border: "none", borderLeft: `1px solid ${C.line}`, background: "transparent", color: C.gold, fontFamily: MONO, fontSize: 13, cursor: "pointer" }}>›</button>
+          </div>
+        ) : (
+          <button onClick={() => { snd(SFX.toggle); set("time", s.time === "night" ? "day" : "night"); }} title="Time system is off — click to flip day/night"
+            className="flex flex-col justify-center px-3 text-right" style={{ borderStyle: "solid", borderColor: C.line, borderWidth: "0 0 0 1px", background: "transparent", borderRadius: 0, cursor: "pointer" }}>
+            <span style={{ color: s.time === "night" ? C.violet : C.gold, fontSize: 12, fontFamily: MONO, letterSpacing: "0.1em" }}>{s.time === "night" ? "☾ NIGHT" : "☀ DAY"}</span>
+            <span style={{ color: C.dim, fontSize: 10, whiteSpace: "nowrap" }}>{hol.label}</span>
+          </button>
+        )}
         <div className="flex flex-col justify-center px-3 text-right" style={{ borderLeft: `1px solid ${C.line}`, minWidth: 96 }}>
           <span style={{ color: C.text, fontSize: 13, fontFamily: MONO }}>{realTime}</span>
           <span style={{ color: C.dim, fontSize: 10, whiteSpace: "nowrap" }}>{realDate}</span>
