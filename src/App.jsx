@@ -38,7 +38,7 @@ import {
   setPartyAt, undo as undoWorld, canUndo, logByDay, logLine,
 } from "./logic/world.js";
 import { CityMap, MapLegend, tierTone } from "./ui/CityMap.jsx";
-import { MAP_PINS } from "./data/citymap.js";
+import { MAP_PINS, addressOf, exteriorOf, interiorOf, lockLine } from "./data/citymap.js";
 import { buildSheet, sdMods, gearSlotsUsed, walletText, hpState, rollDamage } from "./logic/sheet.js";
 import {
   Bracket, Panel, ConfirmBtn, Seg, Row, Stat, Select, Group, Toggle, Btn, Glyph, Search, hit,
@@ -303,7 +303,7 @@ export default function MeridiaOS() {
   const [saveState, setSaveState] = useState("ok");   // ok | blocked (couldn't read existing save) | failed (write refused)
   const [numDraft, setNumDraft] = useState({});       // half-typed numbers in edit mode ("-", "")
   const [world, setWorld] = useState(WORLD_DEFAULT);  // THE SPINE — shared world state
-  const [mapSel, setMapSel] = useState({ district: null, loc: null });
+  const [mapSel, setMapSel] = useState({ district: null, loc: null, bldg: null, inside: false });
   const [dateDraft, setDateDraft] = useState("");
 
   const play = s.uiMode === "play";
@@ -1377,11 +1377,56 @@ export default function MeridiaOS() {
             </Bracket>
 
             <div className="mt-3" />
-            {selLoc ? (
+            {mapSel.bldg ? (() => {
+              const b = mapSel.bldg, addr = addressOf(b), ext = exteriorOf(b), inn = interiorOf(b);
+              const dist = DISTRICTS[b.d];
+              return (
+                <Bracket>
+                  <div className="flex items-baseline justify-between">
+                    <div style={kicker(tierTone(b.d))}>{dist.name.toUpperCase()} · {dist.cls.toUpperCase()}</div>
+                    <button onClick={() => setMapSel({ ...mapSel, bldg: null, inside: false })}
+                      style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 12 }}>✕</button>
+                  </div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: C.text }}>{addr.line}</div>
+                  <div style={{ fontFamily: MONO, fontSize: 10, color: C.dim, marginBottom: 6 }}>
+                    {dist.name} · provisional address — the street scheme isn't settled yet
+                  </div>
+
+                  {!mapSel.inside ? (
+                    <>
+                      <Row k="FROM THE STREET" v={ext.text} />
+                      <Row k="GUARD RESPONSE" v={dist.guard} />
+                      <Row k="THE DOOR" v={lockLine(inn)} />
+                      <div className="flex gap-2 mt-2">
+                        <Btn tone={C.cyan} color={C.cyan} onClick={() => { snd(SFX.open); setMapSel({ ...mapSel, inside: true }); }}>ENTER BUILDING ›</Btn>
+                        <Btn flex={false} tone={C.amber} color={C.amber} onClick={() => run({ seenAt: String(b.near) })}>SCAN OUTSIDE</Btn>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Row k="INSIDE" v={`${cap(inn.state)} · ${inn.floors} floor${inn.floors > 1 ? "s" : ""}${inn.cellar ? " and a cellar" : ""}`} />
+                      <Row k="WHO'S IN" v={inn.heads ? `${inn.heads} ${inn.heads === 1 ? "person" : "people"}` : "Nobody — for now"} tone={inn.heads ? C.gold : C.dim} />
+                      <Row k="YOU HEAR" v={inn.sound} />
+                      <Row k="IT SMELLS OF" v={inn.smell} />
+                      <Row k="WAYS IN" v={inn.ways.join("; ")} />
+                      <Row k="THE DOOR" v={lockLine(inn)} />
+                      <div className="flex gap-2 mt-2">
+                        {!!inn.heads && <Btn tone={C.amber} color={C.amber}
+                          onClick={() => (inn.heads > 1
+                            ? runCrowd({ seenAt: String(b.near), crowd: inn.heads }, addr.line)
+                            : run({ seenAt: String(b.near) }))}>
+                          {inn.heads > 1 ? `SCAN ALL ${inn.heads}` : "SCAN WHO'S IN"}</Btn>}
+                        <Btn flex={false} onClick={() => { snd(SFX.back); setMapSel({ ...mapSel, inside: false }); }}>‹ BACK OUT</Btn>
+                      </div>
+                    </>
+                  )}
+                </Bracket>
+              );
+            })() : selLoc ? (
               <Bracket>
                 <div className="flex items-baseline justify-between">
                   <div style={kicker(tierTone(selLoc.d))}>{DISTRICTS[selLoc.d].name.toUpperCase()} · #{selLoc.n}</div>
-                  <button onClick={() => setMapSel({ district: selLoc.d, loc: null })}
+                  <button onClick={() => setMapSel({ district: selLoc.d, loc: null, bldg: null, inside: false })}
                     style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 12 }}>✕</button>
                 </div>
                 <div style={{ fontSize: 17, fontWeight: 800, color: C.text, marginBottom: 2 }}>{selLoc.name}</div>
@@ -1405,16 +1450,17 @@ export default function MeridiaOS() {
                     <div style={{ fontFamily: MONO, fontSize: 11, color: C.dim, marginBottom: 6 }}>
                       {DISTRICTS[mapSel.district].cat} · {DISTRICTS[mapSel.district].cls} · guard {DISTRICTS[mapSel.district].guard}</div>
                     {LOCATIONS.filter((l) => l.d === mapSel.district).map((l) => (
-                      <ListBtn key={l.n} onClick={() => setMapSel({ district: l.d, loc: l.n })}
+                      <ListBtn key={l.n} onClick={() => setMapSel({ district: l.d, loc: l.n, bldg: null, inside: false })}
                         title={`${l.n}. ${l.name}`} right={world.partyAt === l.n ? "PARTY" : ""} sub={l.k.join(" · ")} />
                     ))}
-                    <div className="mt-2"><Btn onClick={() => setMapSel({ district: null, loc: null })}>ALL DISTRICTS</Btn></div>
+                    <div className="mt-2"><Btn onClick={() => setMapSel({ district: null, loc: null, bldg: null, inside: false })}>ALL DISTRICTS</Btn></div>
                   </>
                 ) : (
                   <>
-                    <div style={{ fontFamily: MONO, fontSize: 11, color: C.dim, marginBottom: 6 }}>Tap the map, or a district here.</div>
+                    <div style={{ fontFamily: MONO, fontSize: 11, color: C.dim, marginBottom: 6 }}>
+                      Tap a district, or zoom into the map and tap a door.</div>
                     {Object.keys(DISTRICTS).map((dk) => (
-                      <ListBtn key={dk} onClick={() => setMapSel({ district: dk, loc: null })}
+                      <ListBtn key={dk} onClick={() => setMapSel({ district: dk, loc: null, bldg: null, inside: false })}
                         title={DISTRICTS[dk].name} right={`${LOCATIONS.filter((l) => l.d === dk).length}`}
                         sub={`${DISTRICTS[dk].cat} · ${DISTRICTS[dk].cls}`} />
                     ))}
@@ -1892,10 +1938,10 @@ export default function MeridiaOS() {
         </aside>
 
         {/* centre: the map when the Map app is open, otherwise the NPC sheet */}
-        <main className="px-4 pb-4" style={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
+        <main className="px-4 pb-4" style={{ flex: 1, minWidth: 0, overflowY: app === "map" ? "hidden" : "auto" }}>
           {app === "map" ? (
-            <div className="pt-3">
-              <div className="flex items-baseline gap-3 mb-2 flex-wrap">
+            <div className="pt-3" style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+              <div className="flex items-baseline gap-3 mb-2 flex-wrap" style={{ flexShrink: 0 }}>
                 <span style={{ fontFamily: MONO, fontSize: 12, color: C.cyan, letterSpacing: "0.12em" }}>MERIDIA — THE CITY OF MASKS</span>
                 <span style={{ fontFamily: MONO, fontSize: 11, color: C.dim }}>{dayLabel(world)} · {watchOf(world).name}</span>
                 {world.partyAt != null && locByN(world.partyAt) &&
@@ -1904,11 +1950,13 @@ export default function MeridiaOS() {
                 <button onClick={bumpWatch} className="px-2 py-1" title="Advance one watch"
                   style={{ border: `1px solid ${C.gold}`, color: C.gold, background: "transparent", fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", borderRadius: 0, cursor: "pointer" }}>NEXT WATCH ›</button>
               </div>
-              <CityMap selDistrict={mapSel.district} selLoc={mapSel.loc} partyAt={world.partyAt}
+              <CityMap selDistrict={mapSel.district} selLoc={mapSel.loc} selBldg={mapSel.bldg} partyAt={world.partyAt}
                 night={watchOf(world).night && world.on}
-                onDistrict={(code) => { snd(SFX.tap); setMapSel({ district: code, loc: null }); }}
-                onLoc={(n) => { snd(SFX.tap); const l = locByN(n); setMapSel({ district: l ? l.d : null, loc: n }); }} />
-              <MapLegend night={watchOf(world).night && world.on} />
+                onDistrict={(code) => { snd(SFX.tap); setMapSel({ district: code, loc: null, bldg: null, inside: false }); }}
+                onLoc={(n) => { snd(SFX.tap); const l = locByN(n); setMapSel({ district: l ? l.d : null, loc: n, bldg: null, inside: false }); }}
+                onBldg={(b) => { snd(SFX.tap); setMapSel({ district: b.d, loc: null, bldg: b, inside: false }); }}
+                onBlank={() => { if (mapSel.bldg || mapSel.loc) { snd(SFX.back); setMapSel({ ...mapSel, loc: null, bldg: null, inside: false }); } }} />
+              <div style={{ flexShrink: 0 }}><MapLegend night={watchOf(world).night && world.on} /></div>
             </div>
           ) : sheet()}
         </main>
