@@ -1913,8 +1913,8 @@ export default function MeridiaOS() {
           ) : sheet()}
         </main>
 
-        {/* right: party rail */}
-        {play && s.partyRail && rail()}
+        {/* right: party rail — not over the map, which needs the width and shows the party itself */}
+        {play && s.partyRail && app !== "map" && rail()}
       </div>
 
       {saveState !== "ok" && (
