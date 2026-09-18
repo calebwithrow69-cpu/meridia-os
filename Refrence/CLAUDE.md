@@ -115,6 +115,17 @@ Not wired in: CS2/CS3's hex-crawls, monster stat blocks (including two solid per
 This was the highest-risk change of the session (it touches his real save data), so it got proportionally more verification: `scripts/regression.mjs` now generates ~2,000+ NPCs, regenerates each from its own seed independently, requires the diff against a pristine regen to be empty, simulates edits, reapplies them, and requires byte-identical reconstruction. It caught one real bug before any live storage code was touched — not in the seed mechanism (a standalone diagnostic confirmed `generateSeeded` was already perfectly deterministic), but in the *test's own* comparison, which forgot to reattach the seed/genSettings/genKeep bookkeeping fields to the rebuilt object before comparing. Worth remembering: when a round-trip test fails, check whether the bug is in the thing under test or in the test's own comparison before assuming the mechanism is broken.
 **Not yet compacted:** crowd/muster-generated NPCs still save as full objects even if individually kept — only the single-scan path (`run()`) is seeded so far. Extending `generateSeeded` to `runCrowd`/`muster` would close that gap if the full-object crowd saves ever become a real size problem.
 
+## The spine and the Map app (2026-09-17)
+**The spine** lives in `src/logic/world.js` and is saved as `world` inside the same `meridia-os:v7` key (additive — old saves just get the defaults). Watches are **Dawn · Morning · Midday · Afternoon · Dusk · Night** (he picked this set over his original draft). Time only moves when he taps: `NEXT WATCH` advances one and rolls into the next day past Night, any watch is tappable directly, and `NEXT DAY` jumps. `world.on` switches the whole thing off, which restores the old day/night taskbar flip exactly as it was. While it's on, the current watch sets `s.time`, so advancing to Dusk genuinely changes what the next generated stranger is doing.
+**Undo** rewinds position in time only — day, watch, party position, restored *field by field, never a blanket spread of the snapshot*. Early snapshots included the log, and spreading one wiped notes written since; that's fixed and guarded against old snapshots still sitting in saved data. Undo writes its own log line rather than erasing history.
+**The day log** records every advance, party move and undo automatically, plus his own typed lines, grouped by day and colour-coded by kind. Reachable from the taskbar clock or the Map app.
+**No invented calendar.** The books give Meridia no named months, so the spine counts days and offers an optional free-text date field. Don't fill that in with homebrew month names.
+
+**The Map app** (`src/ui/CityMap.jsx`, geometry in `src/data/citymap.js`, art at `public/meridia-map.png`). The art is the genuine Cursed Scroll 6 spread (pp. 2–3), stitched and converted to white-on-transparent line art, then rendered through a **CSS mask over a flat neon colour** — so the printed streets, canals, bridges and numbered badges glow instead of inking. Three stacked passes (two blurred, one crisp) make the bloom; a tech grid sits under it and scanlines over it. It washes **violet at Dusk/Night, cyan by day**, straight off the spine.
+All 50 pins are positioned in a **1000 × 709 coordinate space that matches the stitched spread exactly**, read off a rendered copy with a grid overlaid, so a pin lands precisely on the book's own badge. `CITY_BOX` crops out the PDF's page margins without changing any coordinate. District polygons are hand-traced from the printed dashed boundaries and used as *highlight zones* rather than exact borders — the real borders stay visible in the art underneath, which is why small inaccuracies there read as intentional.
+**How to render PDF pages here:** `pdftoppm` is not installed, so the Read tool can't rasterise a PDF. `pdftotext.exe` ships with Git (`C:\Program Files\Git\mingw64\bin\`), and **PyMuPDF is installed** (`py -m pip install pymupdf`) — that's what produced the map. Use it for any future page-image work.
+Superseded: the earlier standalone map demo (a throwaway Claude Artifact) had the geography plainly wrong — Gedgarrin in the wrong quarter, Montmar not on its island. It's dead; this is the real one.
+
 ## Known issues and to-dos
 - Fixed a latent bug: the wizard's talent table called `chance()` and `pick()` but neither was imported in `shadowdark.js` — would have thrown if a wizard ever rolled a talent in the 3–7 range. Now imported.
 - ✅ Checked against the core PDF (2026-09-17): `WIZARD_KNOWN` was exactly right. The wizard/fighter/priest/thief talent tables were all missing half of their level-12 row ("choose a talent, **or** +2 stat points" — only the second half was coded) — fixed on all four. Backgrounds: verified all 20, added the one missing ("Barbarian"); the labor/trade/crime/martial/arcane/clergy/noble grouping is our own invention for filtering, not the book's (the book's table is a flat, uncategorized d20 roll).
@@ -123,15 +134,14 @@ This was the highest-risk change of the session (it touches his real save data),
 
 ## Roadmap (build one system at a time)
 0. ✅ Shell rework (done in v11–v13).
-1. **The spine.** Shared world state; a real calendar; six watches (he named early morning, mid morning, midday?, afternoon, evening, night — **confirm the sixth**); time only advances when he taps, and the whole time system can be switched off. Also: an approval queue (accept/edit/reject), undo, a day log, and a "what changed since last session" screen.
+1. **The spine.** 🟡 **First slice built (2026-09-17)** — see "The spine and the Map app" below. Done: shared world state (`src/logic/world.js`, saved under `world` in the same storage key), six watches, tap-to-advance, switch-off, undo, a day log, and the watch driving day/night for generation. **Still to do: the approval queue (accept/edit/reject) and the "what changed since last session" screen.** The calendar is a day count plus his own optional date text, deliberately not a made-up month list.
 2. **Geography and map.**
-   - District → 5 neighbourhoods → building. Neighbourhoods have danger and wealth levels.
-   - A street-address scheme players can work out (**undecided**).
-   - A vector map drawn from the CS6 spread. Tapping a building opens it; it doesn't move the party.
-   - **Feasibility demo built (2026-09-17), not merged into the app.** A standalone Claude Artifact (not in this repo — a throwaway prototype) using the real `DISTRICTS`/`LOCATIONS` data: 8 clickable district shapes with a canal system and the Gutterwash–Rilken Row toll bridge, 50 numbered location dots scattered within their district, click-through to full location detail (kind, who's here, referee note, guard response). District layout is a plausible reconstruction from the book's own text (wealth tiers, the toll bridge, canal encounter tables) — **not traced from the printed map art**, since page-image extraction isn't available in this environment (no `pdftoppm`). If he likes the interaction pattern, the real version still needs: actual geography from the book's map image, the street-address scheme (still undecided above), and porting the demo's click/detail logic into `App.jsx` proper.
-   - Drag the party along streets, with link/unlink so members can split.
+   - District → 5 neighbourhoods → building. Neighbourhoods have danger and wealth levels. **Not built.**
+   - A street-address scheme players can work out (**still undecided**).
+   - ✅ **The map is built and in the app** as its own taskbar app — the real CS6 spread, traced. See below.
+   - Drag the party along streets, with link/unlink so members can split. **Not built** — but the spine already records a single party position (`world.partyAt`), set from the map's PARTY HERE and written to the day log.
    - There's no movement cost; time advances manually.
-   - The Gutterwash–Rilken Row toll bridge costs 5 sp.
+   - The Gutterwash–Rilken Row toll bridge costs 5 sp. **Visible on the map art; no toll mechanic yet.**
 3. **Party.** Bench/swap players; a colour per player that retints the UI; a neutral DM slot; per-player profiles; heat per faction and per player.
 4. **Buildings.**
    - A tap card: address, sign, owner, description, who's inside.
@@ -158,8 +168,8 @@ This was the highest-risk change of the session (it touches his real save data),
 12. **Beyond the city.** Overland travel with the core hex rules, Stonehell, the wider Reaches.
 
 ## Open decisions (ask him; don't guess)
-1. The sixth watch.
-2. The street-address scheme.
+1. ✅ **Settled 2026-09-17:** the watches are Dawn · Morning · Midday · Afternoon · Dusk · Night.
+2. The street-address scheme. (Now the blocker for neighbourhoods and building-level play — the map is in and pins are placed, but nothing below "location" has an address.)
 3. Pre-rolled encounters with location resolved on arrival — yes or no?
 4. Which other processes, besides weather and prices, should run without asking?
 5. The magic-item insanity system (not designed yet).
