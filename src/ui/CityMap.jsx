@@ -21,7 +21,7 @@ import { DISTRICTS, LOCATIONS } from "../data/npc.js";
    Buildings only become interactive past BLDG_ZOOM. Below that you're looking at the city and
    tapping districts and known places; past it you're on a street tapping doors. */
 
-const MINZ = 1, MAXZ = 14, BLDG_ZOOM = 2.2, LABEL_ZOOM = 2.6;
+const MINZ = 1, MAXZ = 14, BLDG_ZOOM = 1.8, LABEL_ZOOM = 2.6;
 
 const TIER_TONE = { Wealthy: C.gold, Working: C.cyan, Poor: C.blood };
 export const tierTone = (code) => TIER_TONE[(DISTRICTS[code] || {}).cls] || C.cyan;

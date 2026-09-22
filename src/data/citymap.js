@@ -58,7 +58,9 @@ export function addressOf(b) {
   return { num, street, district: DISTRICTS[b.d].name, line: `${num} ${street}` };
 }
 
-const SIZE = (a) => (a < 250 ? "small" : a < 800 ? "mid" : "large");
+/* Thresholds are the terciles of the real footprint areas in citymap_gen, so the city
+   comes out roughly a third hovels, a third middling, a third big. */
+const SIZE = (a) => (a < 950 ? "small" : a < 1900 ? "mid" : "large");
 
 const EXT = {
   Wealthy: {
