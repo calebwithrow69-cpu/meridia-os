@@ -28,11 +28,19 @@ export const polyPoints = (flat) => {
 };
 
 /* Identity comes from the footprint's own position, not its index, so regenerating the geometry
-   doesn't rename every building in the city and orphan anything keyed to one. */
-export const bldgId = (b) => `b${b.d}${b.c[0]}x${b.c[1]}`;
+   doesn't rename every building in the city and orphan anything keyed to one. Area is part of
+   it because the rounded centroid alone collided for 3 pairs — a building sitting inside or
+   around another can share a centre — and a collision means two different buildings on the map
+   hand back the same address, interior and stock. */
+export const bldgId = (b) => `b${b.d}${b.c[0]}x${b.c[1]}a${b.a}`;
 
 const roll = (b, salt) => seededRNG(hashStr(bldgId(b) + salt));
 const one = (rng, a) => a[Math.floor(rng() * a.length)];
+
+/* 43 of the 50 book locations ARE a footprint, attached by containment when the geometry was
+   traced (see citymap_gen's header). The other 7 are not single buildings — a bridge, a grove,
+   a college precinct — so they have no entry here and stay marker-only. */
+export const BLDG_BY_LOC = BUILDINGS.reduce((m, b) => { if (b.loc) m[b.loc] = b; return m; }, {});
 
 export const BLDG_BY_DISTRICT = BUILDINGS.reduce((m, b) => {
   (m[b.d] = m[b.d] || []).push(b);
@@ -122,10 +130,14 @@ function pickW(rng, pairs) {
   return pairs[0][0];
 }
 
-export function interiorOf(b) {
+/* `trading` comes from the caller because deciding what a building sells needs the shop tables,
+   and those import this file. A building with stock on its shelves cannot also be abandoned or
+   shut up, and somebody has to be behind the counter — without this the jeweller read
+   "Abandoned · Nobody" directly above seven priced lines. */
+export function interiorOf(b, { trading = false } = {}) {
   const rng = roll(b, "int");
   const sz = SIZE(b.a);
-  const state = pickW(rng, STATE);
+  const state = trading ? "working premises" : pickW(rng, STATE);
   const floors = one(rng, FLOORS[sz]);
   const cellar = rng() < (DISTRICTS[b.d].cls === "Poor" ? 0.45 : 0.3);
   const lock = state === "abandoned" ? one(rng, [LOCKS[0], LOCKS[1]])
@@ -133,7 +145,7 @@ export function interiorOf(b) {
       : one(rng, [LOCKS[1], LOCKS[2], LOCKS[2], LOCKS[3]]);
   const heads = state === "abandoned" ? 0
     : state === "shut up for now" ? Math.floor(rng() * 2)
-      : 1 + Math.floor(rng() * (sz === "large" ? 9 : sz === "mid" ? 5 : 3));
+      : Math.max(trading ? 1 : 0, 1 + Math.floor(rng() * (sz === "large" ? 9 : sz === "mid" ? 5 : 3)));
   const ways = [WAYS[0]];
   for (let i = 1; i < WAYS.length; i++) if (rng() < 0.32) ways.push(WAYS[i]);
   return {

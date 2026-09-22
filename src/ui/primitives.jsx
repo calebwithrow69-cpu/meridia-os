@@ -15,6 +15,47 @@ export function Bracket({ children, pad = "p-3", tone: tn = C.line }) {
 }
 
 
+/* What's on the shelf today. Prices from Shadowdark core are shown plain; prices from the
+   adapted Equipment Emporium are marked, because that file is homebrew and its numbers must
+   never read as if they came out of the rulebook. Stock rerolls on NEXT DAY. */
+export function ShopShelf({ shop, day }) {
+  const houses = shop.stock.filter((i) => !i.canon).length;
+  return (
+    <div className="mt-2" style={{ border: `1px solid ${C.amber}55`, background: `${C.amber}08` }}>
+      <div className="flex items-baseline justify-between px-2 pt-1">
+        <span style={{ fontFamily: MONO, fontSize: 10, color: C.amber, letterSpacing: "0.1em" }}>
+          {shop.tavern ? "ON THE BOARD" : "FOR SALE"}
+        </span>
+        <span style={{ fontFamily: MONO, fontSize: 9, color: C.dim }}>DAY {day}</span>
+      </div>
+      <div className="px-2 pb-1">
+        {shop.stock.map((it, i) => (
+          <div key={i} className="flex gap-2 items-baseline" style={{ borderBottom: `1px solid ${C.line}44`, padding: "2px 0" }}>
+            {!!it.qty && <span style={{ fontFamily: MONO, fontSize: 10, color: C.dim, minWidth: 20 }}>{it.qty}×</span>}
+            <span style={{ fontSize: 12, color: C.text, flex: 1 }}>
+              {it.n}
+              {it.worn && <span style={{ color: C.dim, fontSize: 10 }}> · second-hand</span>}
+              {it.note && <span style={{ color: C.dim, fontSize: 10 }}> · {it.note}</span>}
+            </span>
+            <span style={{ fontFamily: MONO, fontSize: 11, color: it.canon ? C.text : C.gold, whiteSpace: "nowrap" }}>
+              {it.price}{it.canon ? "" : "*"}
+            </span>
+          </div>
+        ))}
+        <div style={{ fontFamily: MONO, fontSize: 9, color: C.dim, paddingTop: 3, lineHeight: 1.5 }}>
+          {shop.tavern
+            ? "Food and drink from the book's own tavern tables."
+            : houses
+              ? `${houses === shop.stock.length ? "All" : `${houses} of these`} marked * are house prices from the adapted Equipment Emporium, not Shadowdark core.`
+              : "Core Shadowdark prices."}
+          {" "}Restocks on NEXT DAY.
+        </div>
+        <div style={{ fontSize: 11, color: C.dim, paddingTop: 4, lineHeight: 1.45 }}>{shop.quirk} They {shop.wont}.</div>
+      </div>
+    </div>
+  );
+}
+
 export function Panel({ label, tone: tn = C.cyan, children, locked, onLock, onReroll, collapsed, onCollapse }) {
   return (
     <div className="mb-3" style={{ breakInside: "avoid", border: `1px solid ${locked ? C.amber : C.line}`, background: `linear-gradient(135deg, ${tn}0a, transparent 30%), #0A1013`, boxShadow: `inset 3px 0 0 ${tn}55` }}>

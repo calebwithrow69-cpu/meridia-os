@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { C, MONO } from "../lib/theme.js";
 import { MAP_W, MAP_H, MAP_PINS, BUILDINGS, BLDG_BY_DISTRICT, polyPoints, bldgId, nearestBldg } from "../data/citymap.js";
+import { isShop, shopCount } from "../data/shops.js";
 import { DISTRICTS, LOCATIONS } from "../data/npc.js";
 
 /* The city as the book draws it, driven like a map application.
@@ -154,7 +155,13 @@ export function CityMap({ selDistrict, selBldg, selLoc, partyAt, night, onDistri
           cursor: drag.current && moved.current ? "grabbing" : "grab", touchAction: "none",
         }}>
         <style>{`
+          /* These have to be CSS rather than fill=/stroke= attributes on the polygon: a class
+             rule beats a presentation attribute, so .mos-b's transparent was silently winning
+             and the selected building never actually highlighted. Hover is last and carries a
+             pseudo-class, so it outranks both modifiers below. */
           .mos-b { fill: transparent; stroke: transparent; stroke-width: 6; }
+          .mos-s { fill: ${C.amber}1f; stroke: ${C.amber}8c; stroke-width: 5; }
+          .mos-on { fill: #ffffffcc; stroke: #fff; stroke-width: 10; }
           .mos-b:hover { fill: var(--bh); stroke: #fff; stroke-width: 10; }
           @keyframes mosPing { 0% { transform: scale(1); opacity: 0.85; } 100% { transform: scale(2.6); opacity: 0; } }
         `}</style>
@@ -191,12 +198,11 @@ export function CityMap({ selDistrict, selBldg, selLoc, partyAt, night, onDistri
 
             <g pointerEvents={liveB ? "auto" : "none"}>
               {liveB && BUILDINGS.map((b, i) => {
-                const on = selId === bldgId(b);
+                const id = bldgId(b), on = selId === id, sells = isShop(b);
                 return (
-                  <polygon key={i} className="mos-b" points={polyPoints(b.p)}
+                  <polygon key={i} points={polyPoints(b.p)}
+                    className={`mos-b${on ? " mos-on" : sells ? " mos-s" : ""}`}
                     style={{ "--bh": `${tierTone(b.d)}66`, cursor: "pointer" }}
-                    fill={on ? "#ffffffcc" : undefined} stroke={on ? "#fff" : undefined}
-                    strokeWidth={on ? 10 : undefined}
                     onClick={() => { if (!moved.current) onBldg(b); }}
                     onPointerEnter={() => setHoverB(b)} onPointerLeave={() => setHoverB(null)} />
                 );
@@ -266,7 +272,7 @@ export function CityMap({ selDistrict, selBldg, selLoc, partyAt, night, onDistri
           position: "absolute", left: 8, bottom: 8, fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em",
           color: C.dim, background: "#04070Ac9", border: `1px solid ${C.line}`, padding: "2px 6px",
         }}>
-          {z.toFixed(1)}× · {liveB ? `${BUILDINGS.length} DOORS LIVE` : "ZOOM IN FOR DOORS"}
+          {z.toFixed(1)}× · {liveB ? `${BUILDINGS.length} DOORS · ${shopCount()} TRADING` : "ZOOM IN FOR DOORS"}
         </div>
 
         {/* scanlines last, and never in the way of a click */}
@@ -288,6 +294,7 @@ export function MapLegend({ night }) {
         </span>
       ))}
       <span className="flex items-center gap-1"><i style={{ width: 8, height: 8, background: C.green, display: "inline-block" }} />Party</span>
+      <span className="flex items-center gap-1"><i style={{ width: 8, height: 8, border: `2px solid ${C.amber}`, display: "inline-block" }} />Sells something</span>
       <span style={{ color: night ? C.violet : C.dim }}>{night ? "Night wash" : "Day wash"}</span>
       <span>Drag to pan · wheel to zoom</span>
       <span style={{ marginLeft: "auto" }}>Cursed Scroll 6 spread, pp. 2–3</span>

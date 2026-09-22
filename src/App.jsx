@@ -38,11 +38,12 @@ import {
   setPartyAt, undo as undoWorld, canUndo, logByDay, logLine,
 } from "./logic/world.js";
 import { CityMap, MapLegend, tierTone } from "./ui/CityMap.jsx";
-import { MAP_PINS, addressOf, exteriorOf, interiorOf, lockLine } from "./data/citymap.js";
+import { MAP_PINS, BLDG_BY_LOC, addressOf, exteriorOf, interiorOf, lockLine } from "./data/citymap.js";
+import { stockOf, tradeLabel } from "./data/shops.js";
 import { buildSheet, sdMods, gearSlotsUsed, walletText, hpState, rollDamage } from "./logic/sheet.js";
 import {
   Bracket, Panel, ConfirmBtn, Seg, Row, Stat, Select, Group, Toggle, Btn, Glyph, Search, hit,
-  inputStyle,
+  inputStyle, ShopShelf,
 } from "./ui/primitives.jsx";
 import { INK, PAPER, SBox, inkIn, glow, CharSheet } from "./ui/CharSheet.jsx";
 
@@ -1378,29 +1379,49 @@ export default function MeridiaOS() {
 
             <div className="mt-3" />
             {mapSel.bldg ? (() => {
-              const b = mapSel.bldg, addr = addressOf(b), ext = exteriorOf(b), inn = interiorOf(b);
+              const b = mapSel.bldg, addr = addressOf(b), ext = exteriorOf(b);
               const dist = DISTRICTS[b.d];
+              const bk = b.loc ? locByN(b.loc) : null;     // the book's own entry, if this is one of the 50
+              const shop = stockOf(b, world.day);
+              const inn = interiorOf(b, { trading: !!shop });
               return (
                 <Bracket>
                   <div className="flex items-baseline justify-between">
-                    <div style={kicker(tierTone(b.d))}>{dist.name.toUpperCase()} · {dist.cls.toUpperCase()}</div>
-                    <button onClick={() => setMapSel({ ...mapSel, bldg: null, inside: false })}
+                    <div style={kicker(tierTone(b.d))}>{dist.name.toUpperCase()} · {dist.cls.toUpperCase()}
+                      {bk ? ` · #${bk.n}` : ""}</div>
+                    <button onClick={() => setMapSel({ ...mapSel, loc: null, bldg: null, inside: false })}
                       style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 12 }}>✕</button>
                   </div>
-                  <div style={{ fontSize: 17, fontWeight: 800, color: C.text }}>{addr.line}</div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: C.text }}>{bk ? bk.name : addr.line}</div>
                   <div style={{ fontFamily: MONO, fontSize: 10, color: C.dim, marginBottom: 6 }}>
-                    {dist.name} · provisional address — the street scheme isn't settled yet
+                    {bk ? `${addr.line} · ` : ""}{dist.name} · provisional address — the street scheme isn't settled yet
                   </div>
+                  {bk && (
+                    <>
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        <span className="px-2" style={{ border: `1px solid ${C.gold}`, color: C.gold, fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em" }}>IN THE BOOK</span>
+                        {bk.k.map((k) => <span key={k} className="px-2" style={{ border: `1px solid ${C.cyan}`, color: C.cyan, fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase" }}>{k}</span>)}
+                      </div>
+                      <Row k="REFEREE NOTE" v={bk.note} />
+                      {!!bk.p.length && <Row k="WHO'S HERE" v={bk.p.join(", ")} tone={C.gold} />}
+                    </>
+                  )}
 
                   {!mapSel.inside ? (
                     <>
                       <Row k="FROM THE STREET" v={ext.text} />
+                      {shop && <Row k="THE SIGN" v={`${shop.name} — ${tradeLabel(shop.type)}`} tone={C.amber} />}
                       <Row k="GUARD RESPONSE" v={dist.guard} />
                       <Row k="THE DOOR" v={lockLine(inn)} />
                       <div className="flex gap-2 mt-2">
-                        <Btn tone={C.cyan} color={C.cyan} onClick={() => { snd(SFX.open); setMapSel({ ...mapSel, inside: true }); }}>ENTER BUILDING ›</Btn>
+                        <Btn tone={C.cyan} color={C.cyan} onClick={() => { snd(SFX.open); setMapSel({ ...mapSel, inside: true }); }}>
+                          {shop ? "GO IN AND LOOK ›" : "ENTER BUILDING ›"}</Btn>
                         <Btn flex={false} tone={C.amber} color={C.amber} onClick={() => run({ seenAt: String(b.near) })}>SCAN OUTSIDE</Btn>
                       </div>
+                      {bk && <div className="flex gap-2 mt-2">
+                        <Btn tone={C.green} color={C.green} onClick={() => placeParty(bk.n)}>
+                          {world.partyAt === bk.n ? "PARTY IS HERE" : "PARTY HERE"}</Btn>
+                      </div>}
                     </>
                   ) : (
                     <>
@@ -1410,6 +1431,7 @@ export default function MeridiaOS() {
                       <Row k="IT SMELLS OF" v={inn.smell} />
                       <Row k="WAYS IN" v={inn.ways.join("; ")} />
                       <Row k="THE DOOR" v={lockLine(inn)} />
+                      {shop && <ShopShelf shop={shop} day={world.day} />}
                       <div className="flex gap-2 mt-2">
                         {!!inn.heads && <Btn tone={C.amber} color={C.amber}
                           onClick={() => (inn.heads > 1
@@ -1953,8 +1975,11 @@ export default function MeridiaOS() {
               <CityMap selDistrict={mapSel.district} selLoc={mapSel.loc} selBldg={mapSel.bldg} partyAt={world.partyAt}
                 night={watchOf(world).night && world.on}
                 onDistrict={(code) => { snd(SFX.tap); setMapSel({ district: code, loc: null, bldg: null, inside: false }); }}
-                onLoc={(n) => { snd(SFX.tap); const l = locByN(n); setMapSel({ district: l ? l.d : null, loc: n, bldg: null, inside: false }); }}
-                onBldg={(b) => { snd(SFX.tap); setMapSel({ district: b.d, loc: null, bldg: b, inside: false }); }}
+                onLoc={(n) => { snd(SFX.tap); const l = locByN(n);
+                  // a named place that IS a footprint opens as that building, so the 50 behave
+                  // like everything else; the 7 with no footprint fall back to the book panel
+                  setMapSel({ district: l ? l.d : null, loc: n, bldg: BLDG_BY_LOC[n] || null, inside: false }); }}
+                onBldg={(b) => { snd(SFX.tap); setMapSel({ district: b.d, loc: b.loc || null, bldg: b, inside: false }); }}
                 onBlank={() => { if (mapSel.bldg || mapSel.loc) { snd(SFX.back); setMapSel({ ...mapSel, loc: null, bldg: null, inside: false }); } }} />
               <div style={{ flexShrink: 0 }}><MapLegend night={watchOf(world).night && world.on} /></div>
             </div>
