@@ -38,8 +38,10 @@ import {
   setPartyAt, undo as undoWorld, canUndo, logByDay, logLine,
 } from "./logic/world.js";
 import { CityMap, MapLegend, tierTone } from "./ui/CityMap.jsx";
-import { MAP_PINS, BLDG_BY_LOC, addressOf, exteriorOf, interiorOf, lockLine } from "./data/citymap.js";
-import { stockOf, tradeLabel } from "./data/shops.js";
+import { MAP_PINS, BLDG_BY_LOC, addressOf, exteriorOf, interiorOf, lockLine, bldgId } from "./data/citymap.js";
+import {
+  stockOf, tradeLabel, coin, stockPeriod, daysToRestock, shopsIn, tradesPresent,
+} from "./data/shops.js";
 import { buildSheet, sdMods, gearSlotsUsed, walletText, hpState, rollDamage } from "./logic/sheet.js";
 import {
   Bracket, Panel, ConfirmBtn, Seg, Row, Stat, Select, Group, Toggle, Btn, Glyph, Search, hit,
@@ -203,6 +205,20 @@ export const MODE_APPS = {
 
 export const ROSTER_CAP = 600; // ~5 KB each; 600 is about 3 MB of the 5 MB limit
 
+/* A shop as plain text, for pasting into notes or reading out. Marks the emporium's prices so
+   the distinction between core and house prices survives leaving the app. */
+export function shopText(shop, b) {
+  const L = [`${shop.name} — ${tradeLabel(shop.type)}`, `${addressOf(b).line}, ${DISTRICTS[b.d].name}`, ""];
+  for (const it of shop.stock) {
+    const left = it.unlimited ? "  " : it.out ? "— " : `${it.qty}x`;
+    L.push(`  ${left} ${it.n.padEnd(38)} ${(it.out ? "sold out" : it.price).padStart(10)}${it.canon ? "" : " *"}${it.note ? `  (${it.note})` : ""}`);
+  }
+  L.push("");
+  if (shop.stock.some((i) => !i.canon)) L.push("* house price (adapted Equipment Emporium), not Shadowdark core.");
+  L.push(shop.quirk, `They ${shop.wont}.`);
+  return L.join("\n");
+}
+
 /* ---------------- sound: synthesised, no files ---------------- */
 
 export const DEFAULTS = {
@@ -285,6 +301,8 @@ export default function MeridiaOS() {
   const [groups, setGroups] = useState([]);
   const [presets, setPresets] = useState([]);
   const [openDist, setOpenDist] = useState(null);
+  const [cityTab, setCityTab] = useState("sites");
+  const [focus, setFocus] = useState(null);   // set to a building id to have the map fly to it
   const [openGroup, setOpenGroup] = useState(null);
   const [nameDraft, setNameDraft] = useState("");
   const [toast, setToast] = useState(null);
@@ -306,6 +324,11 @@ export default function MeridiaOS() {
   const [world, setWorld] = useState(WORLD_DEFAULT);  // THE SPINE — shared world state
   const [mapSel, setMapSel] = useState({ district: null, loc: null, bldg: null, inside: false });
   const [dateDraft, setDateDraft] = useState("");
+  /* The market ledger. Only what the party has actually bought is saved — shelves themselves
+     stay derived — so a city of 196 shops costs nothing until they start spending.
+     `period` is the restock week the ledger belongs to; a newer week wipes it. */
+  const [market, setMarket] = useState({ period: 0, sold: {}, purseCp: 0 });
+  const [shopQ, setShopQ] = useState({ district: null, type: null, q: "" });
 
   const play = s.uiMode === "play";
   const musterN = s.musterN || 5;
@@ -380,6 +403,7 @@ export default function MeridiaOS() {
           if (v.groups) setGroups(v.groups);
           if (v.presets) setPresets(v.presets);
           if (v.pcs) setPcs(v.pcs);
+          if (v.market) setMarket({ period: 0, sold: {}, purseCp: 0, ...v.market });
           if (v.world) setWorld({ ...WORLD_DEFAULT, ...v.world });
           if (v.settings) { const st = { ...DEFAULTS, ...v.settings }; setS(st); setFileTab(st.uiMode === "play" ? st.tabPlay : st.tabPrep); }
           if (v.show) setShow({ ...Object.fromEntries(DEFAULT_ORDER.map((k) => [k, true])), ...v.show });
@@ -404,12 +428,12 @@ export default function MeridiaOS() {
     if (!loaded || saveState === "blocked") return;
     const t = setTimeout(async () => {
       try {
-        const r = await Storage.set(STORE_KEY, JSON.stringify({ roster: roster.map(compactForSave), groups, presets, pcs, settings: s, show, order, world }));
+        const r = await Storage.set(STORE_KEY, JSON.stringify({ roster: roster.map(compactForSave), groups, presets, pcs, settings: s, show, order, world, market }));
         setSaveState(r ? "ok" : "failed");
       } catch (e) { setSaveState("failed"); }
     }, 500); // typing in notes no longer rewrites the whole save on every keystroke
     return () => clearTimeout(t);
-  }, [roster, groups, presets, pcs, s, show, order, world, loaded, saveState]);
+  }, [roster, groups, presets, pcs, s, show, order, world, market, loaded, saveState]);
 
   /* the spine drives day/night for generation while it's switched on, so advancing a watch
      changes what the next stranger is doing */
@@ -540,6 +564,28 @@ export default function MeridiaOS() {
     setWorld((w) => setPartyAt(w, n, l ? `${l.n}. ${l.name}` : `#${n}`));
     flash(l ? `Party at ${l.name}` : "Party moved");
   };
+
+  /* ---------------- the market ---------------- */
+  /* Shelves refill once a week. The ledger of what's been bought carries the week it belongs
+     to, so a stale one is dropped rather than needing a restock step anyone has to remember. */
+  const period = stockPeriod(world.day);
+  const purse = market.purseCp;
+
+  const buy = (b, item, shop) => {
+    if (!item.unlimited && item.qty <= 0) return;
+    if (item.cp > purse) { snd(SFX.alert); flash(`Not enough coin — ${item.n} costs ${item.price}`); return; }
+    const id = bldgId(b);
+    snd(SFX.save);
+    setMarket((m) => {
+      const sold = m.period === period ? { ...m.sold } : {};
+      if (!item.unlimited) sold[id] = { ...(sold[id] || {}), [item.n]: ((sold[id] || {})[item.n] || 0) + 1 };
+      return { period, sold, purseCp: m.purseCp - item.cp };
+    });
+    setWorld((w) => logLine(w, `Bought ${item.n} for ${item.price} at ${shop.name}`, "buy"));
+    flash(`${item.n} — ${item.price}`);
+  };
+
+  const adjustPurse = (cp) => setMarket((m) => ({ ...m, purseCp: Math.max(0, m.purseCp + cp) }));
 
   const openNpc = (n) => { snd(SFX.tap); setNpc(roster.find((x) => x.id === n.id) || n); setShowText(false); setNumDraft({}); };
   const run = (override = {}, keep = {}) => {
@@ -688,7 +734,11 @@ export default function MeridiaOS() {
     if (n.notes) L.push(`\nNOTES: ${n.notes}`);
     return L.join("\n");
   };
-  const doCopy = (text) => copyText(text, (ok) => flash(ok ? "Copied" : "Copy blocked — open the text box on the sheet", !ok));
+  /* The browser refuses a clipboard write when the window isn't focused, so the failure has to
+     say something the reader can act on — and "open the text box on the sheet" only makes sense
+     for an NPC, hence the caller-supplied fallback. */
+  const doCopy = (text, whenBlocked = "Copy blocked — open the text box on the sheet") =>
+    copyText(text, (ok) => flash(ok ? "Copied" : whenBlocked, !ok));
 
   /* ---- override: type over anything, and your version sticks ---- */
   const editField = (path, raw, isNum) => {
@@ -1153,7 +1203,7 @@ export default function MeridiaOS() {
     /* ---------- the spine's day log ---------- */
     if (sub === "time") {
       const days = logByDay(world);
-      const KIND = { day: C.gold, watch: C.cyan, party: C.green, undo: C.violet, note: C.text };
+      const KIND = { day: C.gold, watch: C.cyan, party: C.green, undo: C.violet, note: C.text, buy: C.amber };
       return (
         <div>
           <Bracket>
@@ -1382,7 +1432,7 @@ export default function MeridiaOS() {
               const b = mapSel.bldg, addr = addressOf(b), ext = exteriorOf(b);
               const dist = DISTRICTS[b.d];
               const bk = b.loc ? locByN(b.loc) : null;     // the book's own entry, if this is one of the 50
-              const shop = stockOf(b, world.day);
+              const shop = stockOf(b, world.day, market);
               const inn = interiorOf(b, { trading: !!shop });
               return (
                 <Bracket>
@@ -1431,7 +1481,10 @@ export default function MeridiaOS() {
                       <Row k="IT SMELLS OF" v={inn.smell} />
                       <Row k="WAYS IN" v={inn.ways.join("; ")} />
                       <Row k="THE DOOR" v={lockLine(inn)} />
-                      {shop && <ShopShelf shop={shop} day={world.day} />}
+                      {shop && <ShopShelf shop={shop} day={world.day} purse={purse}
+                        daysLeft={daysToRestock(world.day)} coin={coin}
+                        onBuy={(it) => buy(b, it, shop)}
+                        onCopy={() => { snd(SFX.save); doCopy(shopText(shop, b), "Copy blocked — click the page first, then COPY"); }} />}
                       <div className="flex gap-2 mt-2">
                         {!!inn.heads && <Btn tone={C.amber} color={C.amber}
                           onClick={() => (inn.heads > 1
@@ -1509,8 +1562,73 @@ export default function MeridiaOS() {
           </div>
         );
         const matches = LOCATIONS.filter((l) => hit(q.city, l.n, l.name, l.note, DISTRICTS[l.d].name));
+
+        /* The shop directory. 196 buildings trade, and before this the only way to find one was
+           to zoom the map in and look for an amber outline — no use when a player asks at the
+           table where the nearest blacksmith is. Opening a row jumps to it on the map. */
+        if (cityTab === "shops") {
+          const found = shopsIn(shopQ);
+          const trades = tradesPresent(shopQ.district);
+          const open = (b) => {
+            openApp("map");
+            setMapSel({ district: null, loc: b.loc || null, bldg: b, inside: true });
+            setFocus(bldgId(b));    // tells the map to fly there, not just select it
+          };
+          return (
+            <div>
+              <Seg value={cityTab} onChange={setCityTab} options={[["sites", "Sites"], ["shops", `Shops (${shopsIn({}).length})`]]} />
+              <Search value={shopQ.q} onChange={(v) => setShopQ({ ...shopQ, q: v })} placeholder="Search by sign or trade" />
+              <div className="flex flex-wrap gap-1 mb-2">
+                <Btn flex={false} tone={!shopQ.district ? C.cyan : undefined} color={!shopQ.district ? C.cyan : C.dim}
+                  onClick={() => { snd(SFX.tap); setShopQ({ ...shopQ, district: null, type: null }); }}>ALL CITY</Btn>
+                {Object.keys(DISTRICTS).map((dk) => (
+                  <Btn key={dk} flex={false} tone={shopQ.district === dk ? C.cyan : undefined}
+                    color={shopQ.district === dk ? C.cyan : C.dim}
+                    onClick={() => { snd(SFX.tap); setShopQ({ ...shopQ, district: dk, type: null }); }}>{DISTRICTS[dk].name}</Btn>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-1 mb-2">
+                <Btn flex={false} tone={!shopQ.type ? C.amber : undefined} color={!shopQ.type ? C.amber : C.dim}
+                  onClick={() => { snd(SFX.tap); setShopQ({ ...shopQ, type: null }); }}>ANY TRADE</Btn>
+                {trades.map((t) => (
+                  <Btn key={t} flex={false} tone={shopQ.type === t ? C.amber : undefined}
+                    color={shopQ.type === t ? C.amber : C.dim}
+                    onClick={() => { snd(SFX.tap); setShopQ({ ...shopQ, type: t }); }}>{tradeLabel(t)}</Btn>
+                ))}
+              </div>
+              <div style={{ fontFamily: MONO, fontSize: 10, color: C.dim, marginBottom: 4 }}>
+                {found.length} trading{shopQ.district ? ` in ${DISTRICTS[shopQ.district].name}` : " in the city"}
+                {shopQ.type ? ` · ${tradeLabel(shopQ.type)}` : ""}
+              </div>
+              <div style={{ borderTop: `1px solid ${C.line}` }}>
+                {found.map(({ b, tr }) => {
+                  const st = stockOf(b, world.day, market);
+                  return (
+                    <button key={bldgId(b)} onClick={() => { snd(SFX.tap); open(b); }}
+                      className="w-full text-left p-2" style={{ border: `1px solid ${C.line}`, borderTop: "none", background: C.panel, cursor: "pointer", borderRadius: 0 }}>
+                      <div className="flex items-baseline gap-2">
+                        <span style={{ color: C.text, fontSize: 13 }}>{tr.name}</span>
+                        {tr.fromBook && <span style={{ color: C.gold, fontFamily: MONO, fontSize: 9 }}>#{b.loc}</span>}
+                        <span className="flex-1" />
+                        <span style={{ color: C.amber, fontFamily: MONO, fontSize: 10 }}>{tradeLabel(tr.type)}</span>
+                      </div>
+                      <div style={{ color: C.dim, fontFamily: MONO, fontSize: 10, marginTop: 2 }}>
+                        {addressOf(b).line} · {DISTRICTS[b.d].name}
+                        {st && !st.tavern && ` · ${st.stock.filter((i) => !i.out).length} of ${st.stock.length} lines in stock`}
+                        {st && st.tavern && " · food and drink"}
+                      </div>
+                    </button>
+                  );
+                })}
+                {!found.length && <div className="p-2" style={{ color: C.dim, fontSize: 12 }}>
+                  Nothing trading here under that filter.</div>}
+              </div>
+            </div>
+          );
+        }
         return (
           <div>
+            <Seg value={cityTab} onChange={setCityTab} options={[["sites", "Sites"], ["shops", `Shops (${shopsIn({}).length})`]]} />
             <Search value={q.city} onChange={(v) => setQ({ ...q, city: v })} placeholder="Search by name, number or description" />
             {flat ? <div style={{ borderTop: `1px solid ${C.line}` }}>{matches.map(locRow)}
               {!matches.length && <div className="p-2" style={{ color: C.dim, fontSize: 12 }}>Nothing matches.</div>}</div>
@@ -1531,6 +1649,29 @@ export default function MeridiaOS() {
 
       case "party": return (
         <div>
+          <Bracket>
+            <div className="flex items-baseline justify-between">
+              <div style={kicker(C.amber)}>THE PARTY PURSE</div>
+              <span style={{ fontFamily: MONO, fontSize: 9, color: C.dim }}>SHARED COIN</span>
+            </div>
+            <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
+              <span style={{ fontFamily: MONO, fontSize: 22, color: C.gold, minWidth: 96 }}>{coin(purse)}</span>
+              <span style={{ fontFamily: MONO, fontSize: 10, color: C.dim }}>{purse} cp</span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {[["+1 gp", 100], ["+1 sp", 10], ["+1 cp", 1], ["−1 sp", -10], ["−1 gp", -100]].map(([lb, cp]) => (
+                <Btn key={lb} flex={false} color={cp > 0 ? C.green : C.blood}
+                  onClick={() => { snd(SFX.toggle); adjustPurse(cp); }}>{lb}</Btn>
+              ))}
+              <Btn flex={false} color={C.dim} onClick={() => { snd(SFX.toggle); adjustPurse(-purse); }}>EMPTY</Btn>
+            </div>
+            <div style={{ color: C.dim, fontSize: 11, lineHeight: 1.45, marginTop: 6 }}>
+              What the party can spend in shops. Buying from a shelf takes it from here and
+              writes the purchase to the day log.
+            </div>
+          </Bracket>
+
+          <div className="mt-3" />
           <Bracket>
             <div style={kicker()}>ADD A CHARACTER</div>
             <div className="flex gap-2 mb-2">
@@ -1973,7 +2114,7 @@ export default function MeridiaOS() {
                   style={{ border: `1px solid ${C.gold}`, color: C.gold, background: "transparent", fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", borderRadius: 0, cursor: "pointer" }}>NEXT WATCH ›</button>
               </div>
               <CityMap selDistrict={mapSel.district} selLoc={mapSel.loc} selBldg={mapSel.bldg} partyAt={world.partyAt}
-                night={watchOf(world).night && world.on}
+                night={watchOf(world).night && world.on} focusKey={focus}
                 onDistrict={(code) => { snd(SFX.tap); setMapSel({ district: code, loc: null, bldg: null, inside: false }); }}
                 onLoc={(n) => { snd(SFX.tap); const l = locByN(n);
                   // a named place that IS a footprint opens as that building, so the 50 behave

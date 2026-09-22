@@ -139,6 +139,16 @@ const TIER_TAGS = { hig: "MUH", ged: "MU", nin: "MU", mon: "MU", sil: "PM", roo:
 
 const SHOP_CHANCE = 0.2;   // roughly one building in five is a trade premises
 
+/* Shelves are filled once a week, not once a day. What the party buys is gone until the next
+   restock, so a scarce item stays scarce and hunting one across districts becomes real play.
+   The period is derived from the day rather than stored, so there is no restock bookkeeping to
+   get out of step: the ledger of what has been bought records which period it belongs to, and
+   anything older is simply dropped. */
+export const RESTOCK_EVERY = 7;
+export const stockPeriod = (day) => Math.floor((Math.max(1, day) - 1) / RESTOCK_EVERY);
+export const nextRestockDay = (day) => (stockPeriod(day) + 1) * RESTOCK_EVERY + 1;
+export const daysToRestock = (day) => nextRestockDay(day) - day;
+
 export function tradeOf(b) {
   const loc = b.loc ? locByN(b.loc) : null;
   const cls = DISTRICTS[b.d].cls;
@@ -179,37 +189,51 @@ function poolFor(type, tags) {
 export const coin = (cp) => {
   if (cp >= 100) { const g = cp / 100; return `${g % 1 ? g.toFixed(1) : g} gp`; }
   if (cp >= 10) { const s = cp / 10; return `${s % 1 ? s.toFixed(1) : s} sp`; }
-  return `${Math.max(1, Math.round(cp))} cp`;
+  // a fence's cut can land under a copper, which still costs a copper — but zero is zero
+  return `${cp <= 0 ? 0 : Math.max(1, Math.round(cp))} cp`;
 };
 
+/* A kitchen and a cellar don't run out the way a shelf does, so tavern lines have no count and
+   never sell out — buying one is paying for a round, not taking the last of it. */
 function tavernStock(b, day, tr) {
   const cls = DISTRICTS[b.d].cls;
   const mix = TAVERN_MIX[cls] || TAVERN_MIX.Working;
-  const rng = roll(b, `tavern:${day}`);
+  const rng = roll(b, `tavern:${stockPeriod(day)}`);
   const out = someOf(rng, TAVERN_DRINK, mix.drinks).map(([n, cp, p, note]) =>
-    ({ n, cp, price: p, note, qty: 0, canon: true, drink: true }));
+    ({ n, cp, price: p, note, canon: true, drink: true, unlimited: true }));
   for (const [tier, n] of mix.food) {
     const [die, mult, unit] = FOOD_DIE[tier];
     for (const name of someOf(rng, TAVERN_FOOD[tier], n)) {
       const r = 1 + Math.floor(rng() * die);
       out.push({ n: name, cp: r * mult, price: `${r} ${unit}`, note: `${tier.toLowerCase()} fare`,
-        qty: 0, canon: true, food: true });
+        canon: true, food: true, unlimited: true });
     }
   }
-  return { ...tr, tavern: true, tier: cls, stock: out,
+  return { ...tr, tavern: true, tier: cls, stock: out, spent: 0,
     quirk: one(roll(b, "quirk"), SHOP_QUIRK), wont: one(roll(b, "wont"), SHOP_WONT) };
 }
 
-/* Stock is a function of the building and the day, so it holds still while the party shops and
-   rerolls on NEXT DAY. `day` is world.day. */
-export function stockOf(b, day) {
+/* `market` is the whole saved ledger — { period, sold: { bldgId: { "item name": qty } } }.
+   Stock itself is still derived rather than stored; only what the party has actually bought is
+   kept, so the save stays tiny and a shop nobody has visited costs nothing.
+
+   The stale-period check lives HERE, beside the period logic that defines it, rather than in
+   the caller. A ledger from an earlier week must be ignored or a sold-out item stays sold out
+   for ever, and a guard sitting in the UI is one forgetful caller away from that bug. */
+export function soldAt(b, day, market) {
+  if (!market || market.period !== stockPeriod(day)) return null;
+  return (market.sold || {})[bldgId(b)] || null;
+}
+
+export function stockOf(b, day, market = null) {
   const tr = tradeOf(b);
   if (!tr) return null;
   if (tr.type === "tavern") return tavernStock(b, day, tr);
+  const sold = soldAt(b, day, market);
 
   const spec = STOCK[tr.type] || {};
   const pool = poolFor(tr.type, TIER_TAGS[b.d] || "PM");
-  const rng = roll(b, `stock:${day}`);
+  const rng = roll(b, `stock:${stockPeriod(day)}`);
   const want = 3 + Math.floor(rng() * 5);                   // 3-7 lines on the shelf
   const picks = [], used = new Set();
   for (let guard = 0; picks.length < want && guard < want * 12 && pool.length; guard++) {
@@ -219,12 +243,15 @@ export function stockOf(b, day) {
     let cp = it.hi ? it.cp + Math.floor(rng() * (it.hi - it.cp + 1)) : it.cp;
     if (it.plus) cp = Math.round(cp * (1 + rng() * 0.6));    // "150+ gp" asks above its floor
     if (spec.cut) cp = Math.max(1, Math.round(cp * spec.cut));  // a fence deals under the odds
-    const qty = cp > 2000 ? 1 : cp > 400 ? 1 + Math.floor(rng() * 2) : 1 + Math.floor(rng() * 6);
-    picks.push({ n: it.n, cp, price: coin(cp), s: it.s, qty, canon: !!it.k, worn: !!spec.worn });
+    const had = cp > 2000 ? 1 : cp > 400 ? 1 + Math.floor(rng() * 2) : 1 + Math.floor(rng() * 6);
+    const gone = Math.min(had, (sold && sold[it.n]) || 0);
+    picks.push({ n: it.n, cp, price: coin(cp), s: it.s, had, gone, qty: had - gone,
+      out: had - gone <= 0, canon: !!it.k, worn: !!spec.worn });
   }
-  picks.sort((x, y) => y.cp - x.cp);
-  return { ...tr, stock: picks, quirk: one(roll(b, "quirk"), SHOP_QUIRK),
-    wont: one(roll(b, "wont"), SHOP_WONT) };
+  picks.sort((x, y) => (x.out - y.out) || y.cp - x.cp);      // sold-out sinks to the bottom
+  return { ...tr, stock: picks, cleared: picks.every((p) => p.out),
+    spent: picks.reduce((t, p) => t + p.gone * p.cp, 0),
+    quirk: one(roll(b, "quirk"), SHOP_QUIRK), wont: one(roll(b, "wont"), SHOP_WONT) };
 }
 
 export const tradeLabel = (t) => t.replace(/\b\w/g, (c) => c.toUpperCase());
@@ -237,3 +264,20 @@ let shopIds = null;
 const allShops = () => (shopIds ||= new Set(BUILDINGS.filter((b) => tradeOf(b)).map((b) => bldgId(b))));
 export const isShop = (b) => allShops().has(bldgId(b));
 export const shopCount = () => allShops().size;
+
+/* The directory. Without this, the only way to find a blacksmith was to zoom the map in and
+   look for an amber outline, which is no use when a player asks at the table. */
+let directory = null;
+export function allTrades() {
+  directory ||= BUILDINGS.map((b) => ({ b, tr: tradeOf(b) })).filter((x) => x.tr)
+    .sort((x, y) => x.tr.type.localeCompare(y.tr.type) || x.tr.name.localeCompare(y.tr.name));
+  return directory;
+}
+export function shopsIn({ district = null, type = null, q = "" } = {}) {
+  const needle = q.trim().toLowerCase();
+  return allTrades().filter(({ b, tr }) =>
+    (!district || b.d === district) && (!type || tr.type === type) &&
+    (!needle || tr.name.toLowerCase().includes(needle) || tr.type.includes(needle)));
+}
+export const tradesPresent = (district = null) =>
+  [...new Set(shopsIn({ district }).map((x) => x.tr.type))].sort();

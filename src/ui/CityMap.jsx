@@ -29,7 +29,7 @@ export const tierTone = (code) => TIER_TONE[(DISTRICTS[code] || {}).cls] || C.cy
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-export function CityMap({ selDistrict, selBldg, selLoc, partyAt, night, onDistrict, onBldg, onLoc, onBlank }) {
+export function CityMap({ selDistrict, selBldg, selLoc, partyAt, night, focusKey, onDistrict, onBldg, onLoc, onBlank }) {
   const wrapRef = useRef(null);
   const viewRef = useRef(null);
   const svgRef = useRef(null);
@@ -98,6 +98,22 @@ export function CityMap({ selDistrict, selBldg, selLoc, partyAt, night, onDistri
   }, [zoomAt]);
 
   const stepZoom = (factor) => zoomAt(factor, box.w / 2, box.h / 2);
+
+  /* Picking a shop out of the directory used to select it without moving the map, so "where is
+     this?" went unanswered and at zoom 1 the footprint wasn't even live. `focusKey` changes when
+     the caller wants the map taken somewhere, so it centres that building at a zoom where doors
+     are clickable. Keyed rather than watching selBldg, so a click on the map doesn't re-centre
+     the thing you just clicked and yank it out from under the cursor. */
+  const flewTo = useRef(null);
+  useEffect(() => {
+    // the map isn't mounted while another app is open, so it arrives with focusKey already set
+    // and box still unmeasured — hence box.w in the deps, and a ref so it only flies once
+    if (!focusKey || !selBldg || !box.w || flewTo.current === focusKey) return;
+    flewTo.current = focusKey;
+    const nz = 4;                              // close enough that doors are live
+    const k = box.w / MAP_W;                    // map px -> frame px at zoom 1
+    setView({ z: nz, ...fit(box.w / 2 - selBldg.c[0] * k * nz, box.h / 2 - selBldg.c[1] * k * nz, nz) });
+  }, [focusKey, selBldg, box.w, box.h, fit]);
   const reset = () => setView({ z: 1, x: 0, y: 0 });
 
   function onPointerDown(e) {
