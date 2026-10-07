@@ -43,12 +43,16 @@ import {
   stockOf, tradeLabel, coin, stockPeriod, daysToRestock, shopsIn, tradesPresent,
 } from "./data/shops.js";
 import { buildSheet, sdMods, gearSlotsUsed, walletText, hpState, rollDamage } from "./logic/sheet.js";
-import { MONSTERS } from "./data/monsters_gen.js";
+import { MONSTERS, MONSTER_BY_NAME } from "./data/monsters_gen.js";
 import { DISTRICT_TABLE, rollEncounter } from "./data/encounters_gen.js";
 import {
   // `order` and `drop` are aliased: App already has an `order` state for panel layout
   FIGHT_DEFAULT, addMonsters, addPc, hurt, mend, setHpMax, rollInit, advance, whoseTurn,
   clearDead, endFight, sideTotals, setField as setFightField,
+  // rollAttack is aliased: App already has a local rollAttack(target, attack) for NPC sheets,
+  // and a local const shadows the import silently — the monster one was being handed the wrong
+  // arguments and blew up on `a.bonus` of undefined
+  parseAttacks, attackCount, rollAttack as rollMonsterAttack,
   order as initOrder, drop as dropFighter,
 } from "./logic/fight.js";
 import {
@@ -330,6 +334,8 @@ export default function MeridiaOS() {
   const [selMon, setSelMon] = useState(null);
   const [addN, setAddN] = useState(1);
   const [enc, setEnc] = useState(null);   // the last encounter rolled, shown on its district
+  const [openC, setOpenC] = useState({});     // which combatant rows are expanded
+  const [lastRoll, setLastRoll] = useState({}); // last attack roll per combatant, not persisted
   const [openGroup, setOpenGroup] = useState(null);
   const [nameDraft, setNameDraft] = useState("");
   const [toast, setToast] = useState(null);
@@ -2194,6 +2200,96 @@ export default function MeridiaOS() {
   const appMeta = APP_BY_ID[app];
   // drop taskbar labels to icons (hover shows the name) when the screen, after text size, is too narrow
   const taskLabels = vw / zoom >= 660 + appsFor(s.uiMode).length * 98;
+  /* ---------------- running one combatant's turn ----------------
+     The statblock lives in MONSTERS, not on the combatant, so a saved fight stays small and a
+     monster can't drift from the book. Everything here is looked back up by name. */
+  const runPanel = (c) => {
+    const m = c.kind === "mon" ? MONSTER_BY_NAME[c.mon] : null;
+    const atks = m ? parseAttacks(m.atk) : [];
+    const r = lastRoll[c.id];
+    const ST = ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
+    const doRoll = (a) => {
+      const n = attackCount(a);
+      const rolls = Array.from({ length: n }, () => rollMonsterAttack(a));
+      snd(rolls.some((x) => x.crit) ? SFX.crit : rolls.every((x) => x.fumble) ? SFX.fumble : SFX.hit);
+      setLastRoll((p) => ({ ...p, [c.id]: { a, rolls } }));
+    };
+    return (
+      <div className="px-3 pb-3" style={{ borderTop: `1px solid ${C.line}66`, background: "#05080B" }}>
+        {!m && <div style={{ color: C.dim, fontSize: 11, paddingTop: 8 }}>
+          A player character — their sheet, attacks and spells live with the player.</div>}
+
+        {!!atks.length && (
+          <div className="pt-2">
+            <div style={{ fontFamily: MONO, fontSize: 9, color: C.dim, letterSpacing: "0.1em", marginBottom: 4 }}>ATTACKS</div>
+            <div className="flex flex-wrap gap-1 items-center">
+              {atks.map((a, i) => (
+                <span key={i} className="flex items-center gap-1">
+                  {a.join && <span style={{ fontFamily: MONO, fontSize: 9, color: C.dim }}>{a.join}</span>}
+                  <button onClick={() => doRoll(a)} className="px-2 py-1"
+                    title={a.action ? "No attack roll — see its traits below" : `Roll ${a.count}× d20${fmt(a.bonus)}${a.dmg ? ` and ${a.dmg}` : ""}`}
+                    style={{ border: `1px solid ${a.action ? C.violet : C.blood}`, background: "transparent",
+                      color: a.action ? C.violet : C.blood, fontFamily: MONO, fontSize: 10, cursor: "pointer", borderRadius: 0 }}>
+                    {a.count}× {a.name}{a.bonus != null ? ` ${fmt(a.bonus)}` : ""}{a.dmg ? ` (${a.dmg})` : ""}
+                    {a.range ? ` ${a.range}` : ""}
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {r && (
+          <div className="mt-2 p-2" style={{ border: `1px solid ${C.gold}55`, background: `${C.gold}0d` }}>
+            <div style={{ fontFamily: MONO, fontSize: 9, color: C.gold, letterSpacing: "0.1em" }}>
+              {r.a.count}× {r.a.name.toUpperCase()}{r.a.rider ? ` · ${r.a.rider}` : ""}</div>
+            {r.a.action ? (
+              <div style={{ color: C.text, fontSize: 12, marginTop: 3 }}>
+                No attack roll — {r.rolls.length} use{r.rolls.length > 1 ? "s" : ""} this turn. Its rules are in the traits below.</div>
+            ) : r.rolls.map((x, i) => (
+              <div key={i} className="flex gap-2 items-baseline" style={{ fontFamily: MONO, fontSize: 12, marginTop: 2 }}>
+                <span style={{ color: C.dim, minWidth: 16 }}>{i + 1}.</span>
+                <span style={{ color: x.crit ? C.gold : x.fumble ? C.blood : C.text, minWidth: 92 }}>
+                  d20 {x.nat} {fmt(x.bonus)} = <b>{x.total}</b></span>
+                <span style={{ color: x.crit ? C.gold : x.fumble ? C.blood : C.dim, minWidth: 54 }}>
+                  {x.crit ? "CRIT" : x.fumble ? "MISS (1)" : "to hit"}</span>
+                {x.dmg && <span style={{ color: C.blood }}>
+                  {x.dmg.total} damage <span style={{ color: C.dim }}>[{x.dmg.dice.join("+")}{x.dmg.flat ? `+${x.dmg.flat}` : ""}]</span></span>}
+              </div>
+            ))}
+            {!r.a.action && (
+              <div style={{ fontFamily: MONO, fontSize: 9, color: C.dim, marginTop: 4 }}>
+                Compare each total against the target's AC. A natural 20 always hits and has
+                already doubled its damage dice; a natural 1 always misses.
+              </div>
+            )}
+          </div>
+        )}
+
+        {m && !!(m.sp || []).length && (
+          <div className="mt-2">
+            <div style={{ fontFamily: MONO, fontSize: 9, color: C.dim, letterSpacing: "0.1em", marginBottom: 2 }}>
+              TRAITS, SPELLS AND SPECIAL ATTACKS</div>
+            {m.sp.map((s, i) => (
+              <div key={i} style={{ fontSize: 12, lineHeight: 1.45, paddingBottom: 3 }}>
+                <b style={{ color: C.gold }}>{s.n}.</b> <span style={{ color: C.text }}>{s.t}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {m && (
+          <div className="flex flex-wrap gap-3 mt-2" style={{ fontFamily: MONO, fontSize: 10, color: C.dim }}>
+            {m.st.map((v, i) => <span key={ST[i]}>{ST[i]} <b style={{ color: v >= 0 ? C.text : C.blood }}>{fmt(v)}</b></span>)}
+            <span>MV <b style={{ color: C.text }}>{m.mv}</b></span>
+            <span>AL <b style={{ color: C.text }}>{m.al}</b></span>
+            {m.acn && <span>AC from <b style={{ color: C.text }}>{m.acn}</b></span>}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   /* ---------------- the fight tracker, and the open statblock ---------------- */
   const fightMain = () => {
     const line = initOrder(fight);
@@ -2244,11 +2340,16 @@ export default function MeridiaOS() {
               const st = hpState({ hpNow: c.hpNow, hp: c.hp, status: c.status === "dead" ? "dead" : c.status });
               const active = fight.round > 0 && i === fight.turn;
               return (
-                <div key={c.id} className="flex items-center gap-2 p-2 flex-wrap"
+                <div key={c.id}
                   style={{ borderBottom: `1px solid ${C.line}`, background: active ? `${C.gold}14` : "transparent",
                     boxShadow: active ? `inset 3px 0 0 ${C.gold}` : "none", opacity: c.status === "dead" ? 0.5 : 1 }}>
+                <div className="flex items-center gap-2 p-2 flex-wrap">
                   <input value={c.init ?? ""} onChange={(e) => setFight((f) => setFightField(f, c.id, "init", e.target.value === "" ? null : Number(e.target.value)))}
                     title="Initiative" style={{ ...inputStyle, width: 40, textAlign: "center", fontFamily: MONO, padding: 4 }} />
+                  <button onClick={() => { snd(SFX.tap); setOpenC((o) => ({ ...o, [c.id]: !o[c.id] })); }}
+                    title={openC[c.id] ? "Hide traits and attacks" : "Show traits and attacks"}
+                    style={{ background: "none", border: "none", color: openC[c.id] ? C.gold : C.dim, cursor: "pointer", fontSize: 12, padding: "0 2px" }}>
+                    {openC[c.id] ? "▾" : "▸"}</button>
                   <div style={{ minWidth: 150, flex: 1 }}>
                     <div style={{ color: c.kind === "pc" ? C.green : C.text, fontSize: 13 }}>{c.name}</div>
                     <div style={{ color: C.dim, fontFamily: MONO, fontSize: 10 }}>
@@ -2275,6 +2376,8 @@ export default function MeridiaOS() {
                     <button onClick={() => { snd(SFX.back); setFight((f) => dropFighter(f, c.id)); }} title="Remove"
                       style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 13, padding: "0 4px" }}>✕</button>
                   </div>
+                </div>
+                {openC[c.id] && runPanel(c)}
                 </div>
               );
             })}

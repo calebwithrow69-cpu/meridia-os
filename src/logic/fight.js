@@ -104,6 +104,99 @@ export const clearDead = (fight) => {
 };
 export const endFight = () => ({ ...FIGHT_DEFAULT });
 
+/* ---------------- running a monster's turn ----------------
+
+   The statblock prints attacks as one line, e.g.
+
+     2 tentacle (near) +5 (1d8 + curse) or 1 tail +5 (3d6)
+     2 touch +6 (2d8 + paralysis) and 2 spell +7
+     4 rend +11 (2d12) or 1 fire breath
+
+   so it has to be split before any of it can be rolled. The separator matters and is kept:
+   "or" means choose one of these, "and" means it does both in the same turn.
+
+   A segment with no attack bonus ("1 fire breath", "1 darkness", "2d4 eyestalk ray") is not an
+   attack roll at all — it is a named action whose rules live in one of the monster's traits, so
+   it is marked `action` and the UI points at the trait instead of rolling to hit. */
+
+const DICE = /\d+d\d+/;
+
+function parseSegment(seg, join) {
+  let s = seg.trim();
+  const raw = s;
+  const cm = s.match(/^(\d+d\d+|\d+)\s+/);
+  const count = cm ? cm[1] : "1";
+  if (cm) s = s.slice(cm[0].length);
+
+  let dmg = null, rider = null;
+  const dm = s.match(/\(([^()]*)\)\s*$/);
+  if (dm && DICE.test(dm[1])) {
+    const parts = dm[1].split(/\s*\+\s*/).map((p) => p.trim()).filter(Boolean);
+    const dice = parts.filter((p) => DICE.test(p));
+    const plus = parts.filter((p) => /^\d+$/.test(p));
+    const words = parts.filter((p) => !DICE.test(p) && !/^\d+$/.test(p));
+    dmg = dice.join(" + ") + (plus.length ? ` + ${plus.join(" + ")}` : "");
+    rider = words.length ? words.join(", ") : null;
+    s = s.slice(0, dm.index).trim();
+  }
+
+  let bonus = null;
+  const bm = s.match(/([+-]\d+)\s*$/);
+  if (bm) { bonus = Number(bm[1]); s = s.slice(0, bm.index).trim(); }
+
+  let range = null;
+  const rm = s.match(/\(([^()]*)\)\s*$/);
+  if (rm) { range = rm[1].trim(); s = s.slice(0, rm.index).trim(); }
+
+  return { count, name: s.trim() || raw, range, bonus, dmg, rider, join,
+           action: bonus === null, spell: /\bspell\b/i.test(s), raw };
+}
+
+export function parseAttacks(atk) {
+  if (!atk) return [];
+  const out = [];
+  // split on " or " / " and ", remembering which joined each piece to the one before it
+  const parts = String(atk).split(/\s+(or|and)\s+/i);
+  for (let i = 0; i < parts.length; i += 2) {
+    const join = i === 0 ? null : parts[i - 1].toLowerCase();
+    if (parts[i] && parts[i].trim()) out.push(parseSegment(parts[i], join));
+  }
+  return out;
+}
+
+/* Roll one attack. Core §4: a natural 20 is a crit and doubles the damage DICE (not the flat
+   bonus); a natural 1 always misses. `ac` is optional — pass it and the result says hit or miss,
+   leave it out and it just reports the total for you to compare yourself. */
+export function rollAttack(a, ac = null) {
+  if (a.action) return { action: true, name: a.name };
+  const nat = d(20);
+  const total = nat + (a.bonus || 0);
+  const crit = nat === 20, fumble = nat === 1;
+  const res = { nat, total, crit, fumble, bonus: a.bonus || 0, name: a.name, rider: a.rider };
+  if (ac != null) res.hit = crit || (!fumble && total >= ac);
+  if (a.dmg && (crit || ac == null || res.hit !== false)) {
+    const m = a.dmg.match(/(\d*)d(\d+)/);
+    if (m) {
+      const n = (Number(m[1]) || 1) * (crit ? 2 : 1), sides = Number(m[2]);
+      const bm = a.dmg.match(/\+\s*(\d+)\s*$/);
+      const flat = bm ? Number(bm[1]) : 0;
+      const dice = Array.from({ length: n }, () => d(sides));
+      res.dmg = { dice, flat, total: Math.max(1, dice.reduce((x, y) => x + y, 0) + flat) };
+    }
+  }
+  return res;
+}
+
+/* Rolls how many attacks this creature makes, since the count can itself be a die ("2d4
+   eyestalk ray"). */
+export function attackCount(a) {
+  const m = String(a.count).match(/^(\d+)d(\d+)$/);
+  if (!m) return Number(a.count) || 1;
+  let t = 0;
+  for (let i = 0; i < Number(m[1]); i++) t += d(Number(m[2]));
+  return t;
+}
+
 export const sideTotals = (fight) => ({
   up: fight.in.filter((c) => c.status === "up").length,
   down: fight.in.filter((c) => c.status !== "up").length,
