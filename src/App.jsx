@@ -43,6 +43,13 @@ import {
   stockOf, tradeLabel, coin, stockPeriod, daysToRestock, shopsIn, tradesPresent,
 } from "./data/shops.js";
 import { buildSheet, sdMods, gearSlotsUsed, walletText, hpState, rollDamage } from "./logic/sheet.js";
+import { MONSTERS } from "./data/monsters_gen.js";
+import {
+  // `order` and `drop` are aliased: App already has an `order` state for panel layout
+  FIGHT_DEFAULT, addMonsters, addPc, hurt, mend, setHpMax, rollInit, advance, whoseTurn,
+  clearDead, endFight, sideTotals, setField as setFightField,
+  order as initOrder, drop as dropFighter,
+} from "./logic/fight.js";
 import {
   Bracket, Panel, ConfirmBtn, Seg, Row, Stat, Select, Group, Toggle, Btn, Glyph, Search, hit,
   inputStyle, ShopShelf,
@@ -180,6 +187,7 @@ export const APPS = [
   { id: "npcs", name: "NPCs", short: "NPCs", sub: "Generate, book, groups, saved", tone: "amber", glyph: "eye" },
   { id: "map", name: "Map", short: "Map", sub: "The city itself — districts, sites, the party", tone: "cyan", glyph: "compass" },
   { id: "city", name: "Locations", short: "Locations", sub: "Fifty sites, eight districts", tone: "cyan", glyph: "map" },
+  { id: "bestiary", name: "Monsters", short: "Monsters", sub: "The bestiary, and the fight tracker", tone: "blood", glyph: "fang" },
   { id: "party", name: "Party", short: "Party", sub: "Your PCs and their renown", tone: "green", glyph: "shield" },
   { id: "config", name: "Config", short: "Config", sub: "Layout, modes, sound, taskbar, your data", tone: "dim", glyph: "gear" },
 ];
@@ -199,11 +207,24 @@ export const LEGACY_APP = { scan: "npcs", named: "npcs", muster: "npcs", archive
 // which apps sit on the taskbar in each mode — editable in Config
 
 export const MODE_APPS = {
-  prep: ["npcs", "map", "city", "party", "config"],
-  play: ["npcs", "map", "city", "party"],
+  prep: ["npcs", "map", "city", "bestiary", "party", "config"],
+  play: ["npcs", "map", "city", "bestiary", "party"],
 };
 
 export const ROSTER_CAP = 600; // ~5 KB each; 600 is about 3 MB of the 5 MB limit
+
+/* A statblock as plain text, in the book's own layout, for pasting into notes. */
+export function monsterText(m) {
+  const ST = ["S", "D", "C", "I", "W", "Ch"];
+  const sign = (v) => (v >= 0 ? `+${v}` : `${v}`);
+  return [
+    m.n,
+    m.d,
+    `AC ${m.ac}${m.acn ? ` (${m.acn})` : ""}, HP ${m.hpRaw || m.hp}, ATK ${m.atk}, MV ${m.mv}, ` +
+      m.st.map((v, i) => `${ST[i]} ${sign(v)}`).join(", ") + `, AL ${m.al}, LV ${m.lvRaw || m.lv}`,
+    ...(m.sp || []).map((s) => `${s.n}. ${s.t}`),
+  ].join("\n");
+}
 
 /* A shop as plain text, for pasting into notes or reading out. Marks the emporium's prices so
    the distinction between core and house prices survives leaving the app. */
@@ -303,6 +324,10 @@ export default function MeridiaOS() {
   const [openDist, setOpenDist] = useState(null);
   const [cityTab, setCityTab] = useState("sites");
   const [focus, setFocus] = useState(null);   // set to a building id to have the map fly to it
+  const [fight, setFight] = useState(FIGHT_DEFAULT);   // the combat tracker, saved with everything else
+  const [monQ, setMonQ] = useState({ q: "", band: null, al: null });
+  const [selMon, setSelMon] = useState(null);
+  const [addN, setAddN] = useState(1);
   const [openGroup, setOpenGroup] = useState(null);
   const [nameDraft, setNameDraft] = useState("");
   const [toast, setToast] = useState(null);
@@ -404,6 +429,10 @@ export default function MeridiaOS() {
           if (v.presets) setPresets(v.presets);
           if (v.pcs) setPcs(v.pcs);
           if (v.market) setMarket({ period: 0, sold: {}, purseCp: 0, ...v.market });
+          // clamp hpNow on the way in: a fight saved before negative HP was clamped out would
+          // otherwise keep showing "-5/20" for ever
+          if (v.fight) setFight({ ...FIGHT_DEFAULT, ...v.fight,
+            in: (v.fight.in || []).map((c) => ({ ...c, hpNow: Math.max(0, c.hpNow) })) });
           if (v.world) setWorld({ ...WORLD_DEFAULT, ...v.world });
           if (v.settings) { const st = { ...DEFAULTS, ...v.settings }; setS(st); setFileTab(st.uiMode === "play" ? st.tabPlay : st.tabPrep); }
           if (v.show) setShow({ ...Object.fromEntries(DEFAULT_ORDER.map((k) => [k, true])), ...v.show });
@@ -428,12 +457,12 @@ export default function MeridiaOS() {
     if (!loaded || saveState === "blocked") return;
     const t = setTimeout(async () => {
       try {
-        const r = await Storage.set(STORE_KEY, JSON.stringify({ roster: roster.map(compactForSave), groups, presets, pcs, settings: s, show, order, world, market }));
+        const r = await Storage.set(STORE_KEY, JSON.stringify({ roster: roster.map(compactForSave), groups, presets, pcs, settings: s, show, order, world, market, fight }));
         setSaveState(r ? "ok" : "failed");
       } catch (e) { setSaveState("failed"); }
     }, 500); // typing in notes no longer rewrites the whole save on every keystroke
     return () => clearTimeout(t);
-  }, [roster, groups, presets, pcs, s, show, order, world, market, loaded, saveState]);
+  }, [roster, groups, presets, pcs, s, show, order, world, market, fight, loaded, saveState]);
 
   /* the spine drives day/night for generation while it's switched on, so advancing a watch
      changes what the next stranger is doing */
@@ -1647,6 +1676,77 @@ export default function MeridiaOS() {
         );
       }
 
+      /* ---------- MONSTERS: browse the bestiary, build the fight ---------- */
+      case "bestiary": {
+        const BANDS = [["weak", "LV 0–3"], ["risky", "LV 4–6"], ["dangerous", "LV 7–9"], ["mighty", "LV 10+"]];
+        const found = MONSTERS.filter((m) =>
+          (!monQ.band || m.band === monQ.band) && (!monQ.al || m.al === monQ.al) &&
+          hit(monQ.q, m.n, m.fam, m.d, m.atk));
+        return (
+          <div>
+            <Search value={monQ.q} onChange={(v) => setMonQ({ ...monQ, q: v })} placeholder="Search by name, look or attack" />
+            <div className="flex flex-wrap gap-1 mb-2">
+              <Btn flex={false} tone={!monQ.band ? C.blood : undefined} color={!monQ.band ? C.blood : C.dim}
+                onClick={() => { snd(SFX.tap); setMonQ({ ...monQ, band: null }); }}>ANY</Btn>
+              {BANDS.map(([b, lb]) => (
+                <Btn key={b} flex={false} tone={monQ.band === b ? C.blood : undefined}
+                  color={monQ.band === b ? C.blood : C.dim}
+                  onClick={() => { snd(SFX.tap); setMonQ({ ...monQ, band: monQ.band === b ? null : b }); }}>{lb}</Btn>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1 mb-2">
+              <Btn flex={false} tone={!monQ.al ? C.cyan : undefined} color={!monQ.al ? C.cyan : C.dim}
+                onClick={() => { snd(SFX.tap); setMonQ({ ...monQ, al: null }); }}>ANY AL</Btn>
+              {[["L", "Lawful"], ["N", "Neutral"], ["C", "Chaotic"]].map(([a, lb]) => (
+                <Btn key={a} flex={false} tone={monQ.al === a ? C.cyan : undefined}
+                  color={monQ.al === a ? C.cyan : C.dim}
+                  onClick={() => { snd(SFX.tap); setMonQ({ ...monQ, al: monQ.al === a ? null : a }); }}>{lb}</Btn>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 mb-2">
+              <span style={{ fontFamily: MONO, fontSize: 10, color: C.dim, flex: 1 }}>
+                {found.length} of {MONSTERS.length}</span>
+              <span style={{ fontFamily: MONO, fontSize: 10, color: C.dim }}>ADD</span>
+              {[1, 2, 4, 8].map((n) => (
+                <button key={n} onClick={() => { snd(SFX.tap); setAddN(n); }} className="px-2"
+                  style={{ border: `1px solid ${addN === n ? C.amber : C.line}`, background: "transparent",
+                    color: addN === n ? C.amber : C.dim, fontFamily: MONO, fontSize: 10, cursor: "pointer", borderRadius: 0 }}>×{n}</button>
+              ))}
+            </div>
+            <div style={{ borderTop: `1px solid ${C.line}` }}>
+              {found.slice(0, 180).map((m) => {
+                const on = selMon && selMon.n === m.n;
+                // explicit sides, not `border` + `borderTop: none`: this row's colour changes on
+                // select, and React warns when a shorthand and a longhand for the same property
+                // are both updated during a rerender
+                return (
+                  <div key={m.n} className="flex items-center gap-2 p-2"
+                    style={{ borderLeft: `1px solid ${on ? C.blood : C.line}`,
+                      borderRight: `1px solid ${on ? C.blood : C.line}`,
+                      borderBottom: `1px solid ${on ? C.blood : C.line}`,
+                      background: on ? `${C.blood}12` : C.panel }}>
+                    <button onClick={() => { snd(SFX.tap); setSelMon(m); }}
+                      className="text-left" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", flex: 1, minWidth: 0 }}>
+                      <div style={{ color: C.text, fontSize: 13 }}>{m.n}</div>
+                      <div style={{ color: C.dim, fontFamily: MONO, fontSize: 10 }}>
+                        LV {m.lvRaw || m.lv} · AC {m.ac} · HP {m.hpRaw || m.hp} · {m.al}
+                      </div>
+                    </button>
+                    <Btn flex={false} tone={C.blood} color={C.blood}
+                      onClick={() => { snd(SFX.save); setFight((f) => addMonsters(f, m, addN));
+                        flash(`${m.n}${addN > 1 ? ` ×${addN}` : ""} joined the fight`); }}>+</Btn>
+                  </div>
+                );
+              })}
+              {found.length > 180 && <div className="p-2" style={{ color: C.dim, fontSize: 11 }}>
+                Showing the first 180 — narrow the search.</div>}
+              {!found.length && <div className="p-2" style={{ color: C.dim, fontSize: 12 }}>
+                Nothing in the bestiary matches.</div>}
+            </div>
+          </div>
+        );
+      }
+
       case "party": return (
         <div>
           <Bracket>
@@ -2066,6 +2166,135 @@ export default function MeridiaOS() {
   const appMeta = APP_BY_ID[app];
   // drop taskbar labels to icons (hover shows the name) when the screen, after text size, is too narrow
   const taskLabels = vw / zoom >= 660 + appsFor(s.uiMode).length * 98;
+  /* ---------------- the fight tracker, and the open statblock ---------------- */
+  const fightMain = () => {
+    const line = initOrder(fight);
+    const now = whoseTurn(fight);
+    const tot = sideTotals(fight);
+    const AL = { L: "Lawful", N: "Neutral", C: "Chaotic" };
+    const ST = ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
+    return (
+      <div className="pt-3" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <Bracket>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div style={kicker(C.blood)}>THE FIGHT</div>
+            <span style={{ fontFamily: MONO, fontSize: 18, color: fight.round ? C.text : C.dim }}>
+              {fight.round ? `ROUND ${fight.round}` : "NOT STARTED"}</span>
+            {now && <span style={{ fontFamily: MONO, fontSize: 12, color: C.gold }}>▸ {now.name}</span>}
+            <span className="flex-1" />
+            <span style={{ fontFamily: MONO, fontSize: 10, color: C.dim }}>
+              {tot.up} up · {tot.down} down</span>
+          </div>
+          <div className="flex flex-wrap gap-2 mt-2">
+            <Btn tone={C.gold} color={C.gold} onClick={() => { snd(SFX.scan); setFight((f) => rollInit(f)); }}>
+              ROLL INITIATIVE</Btn>
+            <Btn tone={C.cyan} color={C.cyan} onClick={() => { snd(SFX.tap); setFight(advance); }}>NEXT TURN ›</Btn>
+            {!!pcs.length && <Btn flex={false} color={C.green}
+              onClick={() => { snd(SFX.save); setFight((f) => pcs.reduce((acc, p) => addPc(acc, p), f)); flash("Party added"); }}>
+              + PARTY</Btn>}
+            <Btn flex={false} color={C.dim} onClick={() => { snd(SFX.toggle); setFight(clearDead); }}>CLEAR DEAD</Btn>
+            <ConfirmBtn onConfirm={() => { snd(SFX.back); setFight(endFight()); flash("Fight cleared"); }}
+              render={(armed, go) => (
+                <Btn flex={false} tone={armed ? C.blood : undefined} color={C.blood} onClick={go}>
+                  {armed ? "END — SURE?" : "END FIGHT"}</Btn>
+              )} />
+          </div>
+          <div style={{ fontFamily: MONO, fontSize: 9, color: C.dim, marginTop: 6, lineHeight: 1.5 }}>
+            Initiative is d20 + DEX (core §2). Monsters roll their own; your PCs roll a bare d20
+            because the Party app doesn't track DEX — type over any number to correct it.
+          </div>
+        </Bracket>
+
+        {!fight.in.length ? (
+          <div style={{ color: C.dim, fontSize: 12, lineHeight: 1.5 }}>
+            Nothing in the fight yet. Pick monsters from the bestiary on the left and press +,
+            or drop your party in with + PARTY.
+          </div>
+        ) : (
+          <div style={{ border: `1px solid ${C.line}` }}>
+            {line.map((c, i) => {
+              const st = hpState({ hpNow: c.hpNow, hp: c.hp, status: c.status === "dead" ? "dead" : c.status });
+              const active = fight.round > 0 && i === fight.turn;
+              return (
+                <div key={c.id} className="flex items-center gap-2 p-2 flex-wrap"
+                  style={{ borderBottom: `1px solid ${C.line}`, background: active ? `${C.gold}14` : "transparent",
+                    boxShadow: active ? `inset 3px 0 0 ${C.gold}` : "none", opacity: c.status === "dead" ? 0.5 : 1 }}>
+                  <input value={c.init ?? ""} onChange={(e) => setFight((f) => setFightField(f, c.id, "init", e.target.value === "" ? null : Number(e.target.value)))}
+                    title="Initiative" style={{ ...inputStyle, width: 40, textAlign: "center", fontFamily: MONO, padding: 4 }} />
+                  <div style={{ minWidth: 150, flex: 1 }}>
+                    <div style={{ color: c.kind === "pc" ? C.green : C.text, fontSize: 13 }}>{c.name}</div>
+                    <div style={{ color: C.dim, fontFamily: MONO, fontSize: 10 }}>
+                      LV {c.lv ?? "—"} · AC {c.ac}{c.atk ? ` · ${c.atk}` : ""}{c.mv ? ` · MV ${c.mv}` : ""}
+                    </div>
+                  </div>
+                  <span style={{ fontFamily: MONO, fontSize: 10, color: st.tone, minWidth: 74 }}>{st.label}</span>
+                  <div className="flex items-center gap-1">
+                    <span style={{ fontFamily: MONO, fontSize: 15, color: st.tone, minWidth: 54, textAlign: "right" }}>
+                      {c.hpNow}/{c.hp}</span>
+                    {[1, 5].map((n) => (
+                      <button key={`d${n}`} onClick={() => { snd(SFX.hit); setFight((f) => hurt(f, c.id, n)); }}
+                        title={`${n} damage`} className="px-1"
+                        style={{ border: `1px solid ${C.blood}`, background: "transparent", color: C.blood, fontFamily: MONO, fontSize: 10, cursor: "pointer", borderRadius: 0 }}>−{n}</button>
+                    ))}
+                    {[1, 5].map((n) => (
+                      <button key={`h${n}`} onClick={() => { snd(SFX.heal); setFight((f) => mend(f, c.id, n)); }}
+                        title={`heal ${n}`} className="px-1"
+                        style={{ border: `1px solid ${C.green}`, background: "transparent", color: C.green, fontFamily: MONO, fontSize: 10, cursor: "pointer", borderRadius: 0 }}>+{n}</button>
+                    ))}
+                    <input value={c.hp} onChange={(e) => setFight((f) => setHpMax(f, c.id, Number(e.target.value) || 1))}
+                      title="Max HP — editable, because the Hydra's is '*' and a mutated monster won't match its printed line"
+                      style={{ ...inputStyle, width: 44, textAlign: "center", fontFamily: MONO, padding: 4 }} />
+                    <button onClick={() => { snd(SFX.back); setFight((f) => dropFighter(f, c.id)); }} title="Remove"
+                      style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 13, padding: "0 4px" }}>✕</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {selMon && (
+          <Bracket>
+            <div className="flex items-baseline justify-between">
+              <div style={kicker(C.blood)}>{selMon.fam.toUpperCase()} · {selMon.band.toUpperCase()}</div>
+              <button onClick={() => setSelMon(null)} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 12 }}>✕</button>
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: C.text }}>{selMon.n}</div>
+            <div style={{ color: C.dim, fontSize: 12, lineHeight: 1.5, marginBottom: 6 }}>{selMon.d}</div>
+            <div className="flex flex-wrap gap-3" style={{ fontFamily: MONO, fontSize: 12, color: C.text, marginBottom: 6 }}>
+              <span>AC <b style={{ color: C.cyan }}>{selMon.ac}</b>{selMon.acn ? ` (${selMon.acn})` : ""}</span>
+              <span>HP <b style={{ color: C.blood }}>{selMon.hpRaw || selMon.hp}</b></span>
+              <span>LV <b style={{ color: C.gold }}>{selMon.lvRaw || selMon.lv}</b></span>
+              <span>AL {AL[selMon.al] || selMon.al}</span>
+            </div>
+            <Row k="ATK" v={selMon.atk} />
+            <Row k="MOVE" v={selMon.mv} />
+            <div className="flex flex-wrap gap-3 py-1" style={{ borderBottom: `1px solid ${C.line}55` }}>
+              {selMon.st.map((v, i) => (
+                <span key={ST[i]} style={{ fontFamily: MONO, fontSize: 11, color: C.dim }}>
+                  {ST[i]} <b style={{ color: v >= 0 ? C.text : C.blood }}>{fmt(v)}</b></span>
+              ))}
+            </div>
+            {(selMon.sp || []).map((sp, i) => <Row key={i} k={sp.n.toUpperCase()} v={sp.t} tone={C.gold} />)}
+            {(selMon.hpRaw || selMon.lvRaw) && (
+              <div style={{ fontFamily: MONO, fontSize: 9, color: C.dim, marginTop: 6, lineHeight: 1.5 }}>
+                {selMon.hpRaw === "*"
+                  ? "The book prints HP and LV as *: you choose how many heads it has. Each head is LV 2, AC 15, HP 11."
+                  : "The book prints a pair — the lesser form, then the greater. The tracker starts from the lesser."}
+              </div>
+            )}
+            <div className="flex gap-2 mt-2">
+              <Btn tone={C.blood} color={C.blood}
+                onClick={() => { snd(SFX.save); setFight((f) => addMonsters(f, selMon, addN)); flash(`${selMon.n}${addN > 1 ? ` ×${addN}` : ""} joined the fight`); }}>
+                ADD TO FIGHT{addN > 1 ? ` ×${addN}` : ""}</Btn>
+              <Btn flex={false} onClick={() => doCopy(monsterText(selMon), "Copy blocked — click the page first")}>COPY</Btn>
+            </div>
+          </Bracket>
+        )}
+      </div>
+    );
+  };
+
   const subTitle = sub === "crowd" ? `${crowdLabel} — ${crowd.length}` : sub ? SUB_LABEL[sub] : app === "npcs" ? (NPC_TABS.find((t) => t.id === npcTab) || {}).full : null;
   const two = (n) => String(n).padStart(2, "0");
   const realTime = `${clock.getHours() % 12 || 12}:${two(clock.getMinutes())} ${clock.getHours() < 12 ? "AM" : "PM"}`;
@@ -2124,7 +2353,7 @@ export default function MeridiaOS() {
                 onBlank={() => { if (mapSel.bldg || mapSel.loc) { snd(SFX.back); setMapSel({ ...mapSel, loc: null, bldg: null, inside: false }); } }} />
               <div style={{ flexShrink: 0 }}><MapLegend night={watchOf(world).night && world.on} /></div>
             </div>
-          ) : sheet()}
+          ) : app === "bestiary" ? fightMain() : sheet()}
         </main>
 
         {/* right: party rail — not over the map, which needs the width and shows the party itself */}

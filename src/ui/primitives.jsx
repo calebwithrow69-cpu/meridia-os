@@ -199,6 +199,7 @@ export function Glyph({ kind, color, size = 22 }) {
       {kind === "shield" && <><path d="M12 2l8 3v7c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V5z" {...p} /><path d="M12 8v6" {...p} /></>}
       {kind === "gear" && <><circle cx="12" cy="12" r="3.5" {...p} /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" {...p} /></>}
       {kind === "compass" && <><circle cx="12" cy="12" r="9.5" {...p} /><path d="M15.5 8.5l-2 5-5 2 2-5z" {...p} /></>}
+      {kind === "fang" && <><path d="M4 5c3-1.5 5.5-2 8-2s5 .5 8 2c0 6-1.5 10-8 16C5.5 15 4 11 4 5z" {...p} /><path d="M9 7l1.5 5L12 7l1.5 5L15 7" {...p} /></>}
     </svg>
   );
 }
