@@ -428,7 +428,11 @@ export function buildOpener(npc, isBook) {
     .replace(/\{age\}/g, npc.age)
     .replace(/\{doing\}/g, npc.doing).replace(/\{Doing_c\}/g, cap(npc.doing))
     .replace(/\{mark\}/g, npc.mark).replace(/\{Mark_c\}/g, cap(npc.mark))
-    .replace(/\{voice\}/g, npc.voice).replace(/\{Voice_c\}/g, cap(npc.voice));
+    .replace(/\{voice\}/g, npc.voice).replace(/\{Voice_c\}/g, cap(npc.voice))
+    // smell and tic were added to the frame pool for variety; every placeholder a frame uses
+    // has to be substituted here or it renders literally as "{smell}" in the read-aloud line
+    .replace(/\{smell\}/g, npc.smell || "nothing in particular")
+    .replace(/\{tic\}/g, npc.tic || "watching you");
 }
 
 
