@@ -44,6 +44,7 @@ import {
 } from "./data/shops.js";
 import { buildSheet, sdMods, gearSlotsUsed, walletText, hpState, rollDamage } from "./logic/sheet.js";
 import { MONSTERS } from "./data/monsters_gen.js";
+import { DISTRICT_TABLE, rollEncounter } from "./data/encounters_gen.js";
 import {
   // `order` and `drop` are aliased: App already has an `order` state for panel layout
   FIGHT_DEFAULT, addMonsters, addPc, hurt, mend, setHpMax, rollInit, advance, whoseTurn,
@@ -328,6 +329,7 @@ export default function MeridiaOS() {
   const [monQ, setMonQ] = useState({ q: "", band: null, al: null });
   const [selMon, setSelMon] = useState(null);
   const [addN, setAddN] = useState(1);
+  const [enc, setEnc] = useState(null);   // the last encounter rolled, shown on its district
   const [openGroup, setOpenGroup] = useState(null);
   const [nameDraft, setNameDraft] = useState("");
   const [toast, setToast] = useState(null);
@@ -615,6 +617,20 @@ export default function MeridiaOS() {
   };
 
   const adjustPurse = (cp) => setMarket((m) => ({ ...m, purseCp: Math.max(0, m.purseCp + cp) }));
+
+  /* ---------------- encounters ---------------- */
+  /* The book's nine urban d100 tables are Meridia's own districts, so a district rolls on its
+     own table. The result goes to the day log, because "what happened and when" is the spine's
+     job and an encounter is exactly that. */
+  const rollHere = (code) => {
+    const table = DISTRICT_TABLE[code];
+    if (!table) return;
+    const r = rollEncounter(table);
+    if (!r) return;
+    snd(SFX.scan);
+    setEnc({ d: code, ...r });
+    setWorld((w) => logLine(w, `${DISTRICTS[code].name} encounter (d100 ${r.roll}): ${r.text}`, "enc"));
+  };
 
   const openNpc = (n) => { snd(SFX.tap); setNpc(roster.find((x) => x.id === n.id) || n); setShowText(false); setNumDraft({}); };
   const run = (override = {}, keep = {}) => {
@@ -1232,7 +1248,7 @@ export default function MeridiaOS() {
     /* ---------- the spine's day log ---------- */
     if (sub === "time") {
       const days = logByDay(world);
-      const KIND = { day: C.gold, watch: C.cyan, party: C.green, undo: C.violet, note: C.text, buy: C.amber };
+      const KIND = { day: C.gold, watch: C.cyan, party: C.green, undo: C.violet, note: C.text, buy: C.amber, enc: C.blood };
       return (
         <div>
           <Bracket>
@@ -1557,7 +1573,19 @@ export default function MeridiaOS() {
                       <ListBtn key={l.n} onClick={() => setMapSel({ district: l.d, loc: l.n, bldg: null, inside: false })}
                         title={`${l.n}. ${l.name}`} right={world.partyAt === l.n ? "PARTY" : ""} sub={l.k.join(" · ")} />
                     ))}
-                    <div className="mt-2"><Btn onClick={() => setMapSel({ district: null, loc: null, bldg: null, inside: false })}>ALL DISTRICTS</Btn></div>
+                    {enc && enc.d === mapSel.district && (
+                      <div className="mt-2 p-2" style={{ border: `1px solid ${C.amber}66`, background: `${C.amber}0e` }}>
+                        <div className="flex items-baseline gap-2">
+                          <span style={{ fontFamily: MONO, fontSize: 9, color: C.amber, letterSpacing: "0.1em" }}>ENCOUNTER</span>
+                          <span style={{ fontFamily: MONO, fontSize: 9, color: C.dim }}>d100 → {enc.roll}</span>
+                        </div>
+                        <div style={{ color: C.text, fontSize: 13, lineHeight: 1.45, marginTop: 3 }}>{enc.text}</div>
+                      </div>
+                    )}
+                    <div className="flex gap-2 mt-2">
+                      <Btn tone={C.amber} color={C.amber} onClick={() => rollHere(mapSel.district)}>ROLL ENCOUNTER</Btn>
+                      <Btn flex={false} onClick={() => setMapSel({ district: null, loc: null, bldg: null, inside: false })}>ALL DISTRICTS</Btn>
+                    </div>
                   </>
                 ) : (
                   <>
