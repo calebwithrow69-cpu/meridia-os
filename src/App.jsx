@@ -46,6 +46,10 @@ import { buildSheet, sdMods, gearSlotsUsed, walletText, hpState, rollDamage } fr
 import { MONSTERS, MONSTER_BY_NAME } from "./data/monsters_gen.js";
 import { DISTRICT_TABLE, rollEncounter } from "./data/encounters_gen.js";
 import {
+  rollTable, rollHoard, rollMagicItem, namedItem, treasureTable,
+  TREASURE, MAGIC_TABLES, MAGIC_ITEMS, TREASURE_NAMES, MAGIC_TABLE_NAMES, ENCOUNTER_NAMES,
+} from "./logic/loot.js";
+import {
   // `order` and `drop` are aliased: App already has an `order` state for panel layout
   FIGHT_DEFAULT, addMonsters, addPc, hurt, mend, setHpMax, rollInit, advance, whoseTurn,
   clearDead, endFight, sideTotals, setField as setFightField,
@@ -193,6 +197,7 @@ export const APPS = [
   { id: "map", name: "Map", short: "Map", sub: "The city itself — districts, sites, the party", tone: "cyan", glyph: "compass" },
   { id: "city", name: "Locations", short: "Locations", sub: "Fifty sites, eight districts", tone: "cyan", glyph: "map" },
   { id: "bestiary", name: "Monsters", short: "Monsters", sub: "The bestiary, and the fight tracker", tone: "blood", glyph: "fang" },
+  { id: "tables", name: "Tables", short: "Tables", sub: "Encounters, treasure and magic items", tone: "gold", glyph: "dice" },
   { id: "party", name: "Party", short: "Party", sub: "Your PCs and their renown", tone: "green", glyph: "shield" },
   { id: "config", name: "Config", short: "Config", sub: "Layout, modes, sound, taskbar, your data", tone: "dim", glyph: "gear" },
 ];
@@ -212,11 +217,54 @@ export const LEGACY_APP = { scan: "npcs", named: "npcs", muster: "npcs", archive
 // which apps sit on the taskbar in each mode — editable in Config
 
 export const MODE_APPS = {
-  prep: ["npcs", "map", "city", "bestiary", "party", "config"],
-  play: ["npcs", "map", "city", "bestiary", "party"],
+  prep: ["npcs", "map", "city", "bestiary", "tables", "party", "config"],
+  play: ["npcs", "map", "city", "bestiary", "tables", "party"],
 };
 
 export const ROSTER_CAP = 600; // ~5 KB each; 600 is about 3 MB of the 5 MB limit
+
+/* One roll's result. A hoard, a composed magic item and a plain table roll are different
+   shapes, so each gets its own layout rather than being flattened into one string. */
+function RollCard({ r }) {
+  const Line = ({ k, v, tone: tn = C.text }) => (
+    <div className="flex gap-2" style={{ fontSize: 12, lineHeight: 1.45, padding: "1px 0" }}>
+      <span style={{ fontFamily: MONO, fontSize: 9, color: C.dim, minWidth: 58, paddingTop: 2 }}>{k}</span>
+      <span style={{ color: tn, flex: 1 }}>{v}</span>
+    </div>
+  );
+  const v = r.roll;
+  return (
+    <div className="p-2 mb-1" style={{ border: `1px solid ${C.line}`, background: C.panel }}>
+      <div className="flex items-baseline gap-2" style={{ marginBottom: 3 }}>
+        <span style={{ fontFamily: MONO, fontSize: 9, color: C.gold, letterSpacing: "0.08em" }}>{r.label.toUpperCase()}</span>
+        <span className="flex-1" />
+        <span style={{ fontFamily: MONO, fontSize: 9, color: C.dim }}>DAY {r.day}</span>
+      </div>
+
+      {r.kind === "hoard" ? (<>
+        {v.items.map((it, i) => <Line key={i} k={`d100 ${it.roll}`} v={it.text} />)}
+        {v.extras.map((e, i) => <Line key={`e${i}`} k={e.k} v={e.text} tone={C.dim} />)}
+      </>) : r.kind === "magic" ? (<>
+        <Line k="TYPE" v={[v.kind, v.type && v.type.text, v.bonus && v.bonus.text].filter(Boolean).join(" · ")} tone={C.violet} />
+        {v.feature && <Line k="LOOKS" v={v.feature.text} />}
+        {v.benefits.map((b, i) => <Line key={`b${i}`} k="BENEFIT" v={b.text} tone={C.green} />)}
+        {v.curses.map((c, i) => <Line key={`c${i}`} k="CURSE" v={c.text} tone={C.blood} />)}
+        {v.virtues.map((x, i) => <Line key={`v${i}`} k="VIRTUE" v={x.text} tone={C.gold} />)}
+        {v.flaws.map((x, i) => <Line key={`f${i}`} k="FLAW" v={x.text} tone={C.amber} />)}
+        {v.trait && <Line k="TRAIT" v={v.trait.text} tone={C.gold} />}
+        {!v.benefits.length && !v.curses.length &&
+          <Line k="" v="No benefit and no curse — the qualities roll came up empty. Still magical, still worth coin." tone={C.dim} />}
+      </>) : r.kind === "named" ? (<>
+        <div style={{ fontSize: 15, fontWeight: 800, color: C.text }}>{v.n}</div>
+        <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.45, marginBottom: 3 }}>{v.d}</div>
+        {v.p.map((p, i) => <Line key={i} k={p.k.toUpperCase()} v={p.t}
+          tone={p.k === "Curse" ? C.blood : p.k === "Bonus" ? C.cyan : C.text} />)}
+      </>) : (
+        <Line k={v && v.approx ? "pick" : `roll ${v && v.roll}`} v={v ? v.text : "—"} />
+      )}
+    </div>
+  );
+}
 
 /* A statblock as plain text, in the book's own layout, for pasting into notes. */
 export function monsterText(m) {
@@ -334,6 +382,8 @@ export default function MeridiaOS() {
   const [selMon, setSelMon] = useState(null);
   const [addN, setAddN] = useState(1);
   const [enc, setEnc] = useState(null);   // the last encounter rolled, shown on its district
+  const [tableTab, setTableTab] = useState("enc");
+  const [rolls, setRolls] = useState([]);     // what the Tables app has rolled, newest first
   const [openC, setOpenC] = useState({});     // which combatant rows are expanded
   const [lastRoll, setLastRoll] = useState({}); // last attack roll per combatant, not persisted
   const [openGroup, setOpenGroup] = useState(null);
@@ -1710,6 +1760,88 @@ export default function MeridiaOS() {
         );
       }
 
+      /* ---------- TABLES: roll on anything the book prints ---------- */
+      case "tables": {
+        const push = (kind, label, roll) =>
+          setRolls((p) => [{ id: Math.random().toString(36).slice(2, 8), kind, label, roll, day: world.day }, ...p].slice(0, 60));
+        const T = tableTab;
+        const Tab = ([id, lb]) => (
+          <button key={id} onClick={() => { snd(SFX.tap); setTableTab(id); }} className="flex-1 py-1"
+            style={{ background: T === id ? C.gold : "transparent", color: T === id ? "#06090B" : C.dim,
+              border: "none", fontSize: 11, fontFamily: MONO, cursor: "pointer", fontWeight: T === id ? 700 : 400 }}>{lb}</button>
+        );
+        return (
+          <div>
+            <div className="flex mb-3" style={{ border: `1px solid ${C.lineHot}` }}>
+              {[["enc", "Encounters"], ["loot", "Treasure"], ["magic", "Magic items"]].map(Tab)}
+            </div>
+
+            {T === "enc" && (<>
+              <div style={{ fontFamily: MONO, fontSize: 10, color: C.dim, marginBottom: 6, lineHeight: 1.5 }}>
+                All {ENCOUNTER_NAMES.length} of the book's d100 tables. The nine urban ones are the
+                city's own districts — those also roll straight from the Map.
+              </div>
+              {[["THE CITY", ENCOUNTER_NAMES.filter((n) => /District|Slums|Market|Tavern/.test(n))],
+                ["OUT OF TOWN", ENCOUNTER_NAMES.filter((n) => !/District|Slums|Market|Tavern/.test(n))]].map(([hdr, names]) => (
+                <div key={hdr} className="mb-3">
+                  <div style={kicker()}>{hdr}</div>
+                  <div className="flex flex-wrap gap-1">
+                    {names.map((n) => (
+                      <Btn key={n} flex={false} color={C.cyan}
+                        onClick={() => { snd(SFX.scan); push("enc", n, rollEncounter(n)); }}>{n}</Btn>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </>)}
+
+            {T === "loot" && (<>
+              <div style={{ fontFamily: MONO, fontSize: 10, color: C.dim, marginBottom: 6, lineHeight: 1.5 }}>
+                A hoard rolls the book's treasure table for the party's level, plus a gemstone, a
+                luxury item and a unique feature alongside it.
+              </div>
+              <div style={kicker()}>ROLL A HOARD BY PARTY LEVEL</div>
+              <div className="flex flex-wrap gap-1 mb-3">
+                {[1, 4, 7, 10].map((lv) => (
+                  <Btn key={lv} flex={false} tone={C.gold} color={C.gold}
+                    onClick={() => { snd(SFX.scan); push("hoard", `${treasureTable(lv)}`, rollHoard(lv, 3 + Math.floor(Math.random() * 3))); }}>
+                    LV {lv}{lv === 10 ? "+" : `–${lv + 2}`}</Btn>
+                ))}
+              </div>
+              <div style={kicker()}>OR ONE ROLL ON ANY TREASURE TABLE</div>
+              <div className="flex flex-wrap gap-1">
+                {TREASURE_NAMES.map((n) => (
+                  <Btn key={n} flex={false} color={C.dim}
+                    onClick={() => { snd(SFX.tap); push("one", n, rollTable(TREASURE[n])); }}>{n}</Btn>
+                ))}
+              </div>
+            </>)}
+
+            {T === "magic" && (<>
+              <div style={{ fontFamily: MONO, fontSize: 10, color: C.dim, marginBottom: 6, lineHeight: 1.5 }}>
+                Build one from the book's tables (§31: type, then qualities and personality on 2d6,
+                then that type's own feature, curse and benefit tables), or pull one of the
+                {" "}{MAGIC_ITEMS.length} named items.
+              </div>
+              <div className="flex flex-wrap gap-1 mb-3">
+                <Btn flex={false} tone={C.violet} color={C.violet}
+                  onClick={() => { snd(SFX.scan); push("magic", "Random magic item", rollMagicItem()); }}>GENERATE AN ITEM</Btn>
+                <Btn flex={false} tone={C.gold} color={C.gold}
+                  onClick={() => { snd(SFX.scan); push("named", "Named item", namedItem()); }}>A NAMED ITEM</Btn>
+              </div>
+              <div style={kicker()}>OR ONE ROLL ON ANY OF THE {MAGIC_TABLE_NAMES.length} TABLES</div>
+              <div className="flex flex-wrap gap-1">
+                {MAGIC_TABLE_NAMES.map((n) => (
+                  <Btn key={n} flex={false} color={C.dim}
+                    onClick={() => { snd(SFX.tap); push("one", n, rollTable(MAGIC_TABLES[n])); }}>{n}</Btn>
+                ))}
+              </div>
+            </>)}
+
+          </div>
+        );
+      }
+
       /* ---------- MONSTERS: browse the bestiary, build the fight ---------- */
       case "bestiary": {
         const BANDS = [["weak", "LV 0–3"], ["risky", "LV 4–6"], ["dangerous", "LV 7–9"], ["mighty", "LV 10+"]];
@@ -2290,6 +2422,28 @@ export default function MeridiaOS() {
     );
   };
 
+  /* Results go in the main pane, not the side panel: a hoard or a built magic item is several
+     lines wide and the side column squeezes it to one word per line. */
+  const tablesMain = () => (
+    <div className="pt-3">
+      <div className="flex items-baseline gap-3 mb-2">
+        <div style={kicker(C.gold)}>WHAT YOU ROLLED</div>
+        <span style={{ fontFamily: MONO, fontSize: 10, color: C.dim }}>
+          {rolls.length ? `${rolls.length} kept, newest first` : ""}</span>
+        <span className="flex-1" />
+        {!!rolls.length && <Btn flex={false} color={C.dim}
+          onClick={() => { snd(SFX.back); setRolls([]); }}>CLEAR</Btn>}
+      </div>
+      {!rolls.length ? (
+        <div style={{ color: C.dim, fontSize: 12, lineHeight: 1.55, maxWidth: 560 }}>
+          Nothing rolled yet. Pick a table on the left — all 22 encounter tables, the four
+          treasure tables by party level, or the magic item generator. Results land here and
+          stack up, so a whole night's rolls stay on screen.
+        </div>
+      ) : rolls.map((r) => <RollCard key={r.id} r={r} />)}
+    </div>
+  );
+
   /* ---------------- the fight tracker, and the open statblock ---------------- */
   const fightMain = () => {
     const line = initOrder(fight);
@@ -2484,7 +2638,7 @@ export default function MeridiaOS() {
                 onBlank={() => { if (mapSel.bldg || mapSel.loc) { snd(SFX.back); setMapSel({ ...mapSel, loc: null, bldg: null, inside: false }); } }} />
               <div style={{ flexShrink: 0 }}><MapLegend night={watchOf(world).night && world.on} /></div>
             </div>
-          ) : app === "bestiary" ? fightMain() : sheet()}
+          ) : app === "bestiary" ? fightMain() : app === "tables" ? tablesMain() : sheet()}
         </main>
 
         {/* right: party rail — not over the map, which needs the width and shows the party itself */}
